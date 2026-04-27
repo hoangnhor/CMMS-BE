@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: cmms-be
+    runtime: node
+    plan: starter
+    autoDeploy: true
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5000
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: TRUST_PROXY
+        value: true
+      - key: JSON_LIMIT
+        value: 1mb
+      - key: RATE_LIMIT_WINDOW_MS
+        value: 60000
+      - key: RATE_LIMIT_MAX
+        value: 600
+      - key: AUTH_RATE_LIMIT_WINDOW_MS
+        value: 60000
+      - key: AUTH_RATE_LIMIT_MAX
+        value: 20
+      - key: PM_CHECK_CRON
+        value: 0 6 * * *
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false
