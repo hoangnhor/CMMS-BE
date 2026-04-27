@@ -4,9 +4,29 @@ dotenv.config();
 
 const requiredVars = ["MONGO_URI", "JWT_SECRET"];
 
+function sanitizeEnvValue(value) {
+  if (value == null) return "";
+  const trimmed = String(value).trim().replace(/^\uFEFF/, "");
+  return trimmed.replace(/^['"]|['"]$/g, "");
+}
+
+function normalizeMongoUri(value) {
+  let uri = sanitizeEnvValue(value);
+  if (uri.toUpperCase().startsWith("MONGO_URI=")) {
+    uri = sanitizeEnvValue(uri.slice("MONGO_URI=".length));
+  }
+  if (!/^mongodb(\+srv)?:\/\//i.test(uri)) {
+    throw new Error(
+      "MONGO_URI không hợp lệ. Phải bắt đầu bằng mongodb:// hoặc mongodb+srv://"
+    );
+  }
+  return uri;
+}
+
 function parseOrigins(value) {
-  if (!value || value === "*") return "*";
-  const origins = String(value)
+  const normalized = sanitizeEnvValue(value);
+  if (!normalized || normalized === "*") return "*";
+  const origins = normalized
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
@@ -19,11 +39,15 @@ function getEnv() {
     throw new Error(`Thiếu biến môi trường bắt buộc: ${missing.join(", ")}`);
   }
 
+  const mongoUri = normalizeMongoUri(process.env.MONGO_URI);
+  const jwtSecret = sanitizeEnvValue(process.env.JWT_SECRET);
+  const frontendOrigin = parseOrigins(process.env.FRONTEND_ORIGIN || "*");
+
   if (process.env.NODE_ENV === "production") {
-    if (process.env.FRONTEND_ORIGIN === "*") {
+    if (frontendOrigin === "*") {
       throw new Error("FRONTEND_ORIGIN không được là * trong production");
     }
-    if (String(process.env.JWT_SECRET).length < 32) {
+    if (jwtSecret.length < 32) {
       throw new Error("JWT_SECRET trong production phải có ít nhất 32 ký tự");
     }
   }
@@ -31,10 +55,10 @@ function getEnv() {
   return {
     nodeEnv: process.env.NODE_ENV || "development",
     port: Number(process.env.PORT || 5000),
-    mongoUri: process.env.MONGO_URI,
-    jwtSecret: process.env.JWT_SECRET,
+    mongoUri,
+    jwtSecret,
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
-    frontendOrigin: parseOrigins(process.env.FRONTEND_ORIGIN || "*"),
+    frontendOrigin,
     pmCron: process.env.PM_CHECK_CRON || "0 6 * * *",
     systemUserId: process.env.SYSTEM_USER_ID || null,
     trustProxy: process.env.TRUST_PROXY === "true",
