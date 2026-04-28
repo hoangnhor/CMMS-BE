@@ -55,9 +55,20 @@ function blockUnsafePayload(req, res, next) {
 
 function createRateLimiter({ windowMs, max, name }) {
   const buckets = new Map();
+  let lastSweepAt = 0;
 
   return (req, res, next) => {
     const now = Date.now();
+
+    if (now - lastSweepAt >= windowMs) {
+      for (const [bucketKey, bucket] of buckets.entries()) {
+        if (bucket.resetAt <= now) {
+          buckets.delete(bucketKey);
+        }
+      }
+      lastSweepAt = now;
+    }
+
     const ip = req.ip || req.socket?.remoteAddress || "unknown";
     const key = `${name}:${ip}`;
     const current = buckets.get(key);
