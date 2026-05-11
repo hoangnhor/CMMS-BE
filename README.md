@@ -1,30 +1,90 @@
-# Backend - Asset Management API
+# Asset Management Backend API (CMMS)
 
-Backend Node.js/Express cho hệ thống quản lý tài sản, bảo trì và work order.
+Backend cho hệ thống quản lý tài sản, bảo trì định kỳ (PM) và Work Order lifecycle.
 
-## Công nghệ
+## Highlights
 
-- Node.js + Express 5
+- Secure REST API với JWT + RBAC theo vai trò
+- Work Order workflow đầy đủ, có guard theo trạng thái và quyền
+- PM scheduler tự động sinh Work Order theo trigger
+- Realtime events qua Socket.IO cho FE đồng bộ gần thời gian thực
+- Security hardening: rate-limit, payload guard, security headers, request-id
+- Seed dataset quy mô lớn (500 assets) phục vụ demo/test
+
+## Tech Stack
+
+- Node.js
+- Express 5
 - MongoDB + Mongoose
-- JWT Authentication
+- JWT
 - Socket.IO
-- node-cron (PM checker)
+- node-cron
 
-## Yêu cầu
+## Domain Modules
 
-- Node.js >= 18
-- npm >= 9
-- MongoDB (local hoặc Atlas)
+- Auth
+- Users
+- Assets
+- Work Orders
+- PM Schedules
+- Maintenance Logs
 
-## Cài đặt
+## Work Order Lifecycle
 
-```bash
-npm install
+`draft -> pending_approval -> approved/rejected -> in_progress -> done -> sign-off`
+
+Rule chính:
+- `admin/site_manager/technician` tạo WO
+- Approval/reject theo role + priority rule
+- Technician thực thi start/complete theo assignment
+- Admin/technician sign-off QC khi WO đã done
+
+## PM Automation
+
+Cron job quét `PmSchedule` active:
+- Tính trigger theo loại tài sản (`days/hours/shots/usage_count`)
+- Nếu đến ngưỡng `nextDueValue` thì sinh WO PM
+- Cập nhật `lastTriggeredValue` + `nextDueValue`
+
+## Realtime Events
+
+Backend emit:
+- `asset.changed`
+- `work_order.changed`
+- `maintenance_log.changed`
+- `pm_schedule.changed`
+- `user.changed`
+
+Socket auth qua JWT token (`socket.handshake.auth.token`).
+
+## Security
+
+- JWT auth middleware
+- Role middleware (RBAC)
+- Rate limit (global + auth endpoint)
+- Content-Type enforcement (`application/json`)
+- Unsafe payload blocking (`$`, `.` keys)
+- Security headers (CSP, HSTS in production, X-Frame-Options...)
+- Request tracing với `X-Request-Id`
+
+## Project Structure
+
+```text
+src/
+  config/                 # env + db
+  controllers/            # HTTP handlers
+  routes/                 # route definitions
+  services/               # business logic
+  models/                 # mongoose schemas
+  middleware/             # auth/role/security/error
+  jobs/                   # cron jobs
+  realtime/               # socket emit context
+  utils/                  # shared validators/helpers
 ```
 
-## Biến môi trường
+## Environment
 
-Tạo file `.env` trong thư mục `backend`:
+Tạo `backend/.env`:
 
 ```env
 NODE_ENV=development
@@ -44,35 +104,36 @@ AUTH_RATE_LIMIT_MAX=20
 SHUTDOWN_TIMEOUT_MS=10000
 ```
 
-Bắt buộc:
+Required:
 - `MONGO_URI`
 - `JWT_SECRET`
 
-Lưu ý production:
-- `FRONTEND_ORIGIN` không được để `*`
+Production notes:
+- `FRONTEND_ORIGIN` không được là `*`
 - `JWT_SECRET` nên >= 32 ký tự
 
-## Chạy local
+## Local Setup
 
 ```bash
+npm install
 npm run dev
 ```
 
-Server chạy tại `http://localhost:5000`.
+Server mặc định: `http://localhost:5000`
 
-## Seed dữ liệu mẫu
+## Seed Data
 
 ```bash
 npm run seed
 ```
 
-Seed sẽ tạo:
-- 5 users
+Seed tạo:
+- 5 users (đa vai trò)
 - 500 assets
 - PM schedules
-- lịch sử work orders và maintenance logs
+- Work orders + maintenance logs + spare parts history
 
-Tài khoản mặc định:
+Default accounts:
 - `admin@factory.local / password123`
 - `manager@factory.local / password123`
 - `tech1@factory.local / password123`
@@ -85,31 +146,44 @@ Tài khoản mặc định:
 npm run test
 ```
 
-## API cơ bản
+## API Overview
 
-- `GET /api/health`: kiểm tra service sống
-- `GET /api/ready`: kiểm tra trạng thái kết nối MongoDB
-- `POST /api/auth/login`: đăng nhập
+- `GET /api/health`
+- `GET /api/ready`
+- `POST /api/auth/login`
+- `GET /api/auth/me`
 - `GET/POST/PUT/DELETE /api/assets`
-- `GET/POST/PUT/DELETE /api/work-orders`
-- `GET/POST/PUT/DELETE /api/pm-schedules`
-- `GET/POST/PUT/DELETE /api/maintenance-logs`
-- `GET/POST/PUT/DELETE /api/users`
+- `GET/POST/PUT/... /api/work-orders` (+ workflow actions)
+- `GET/POST/PUT /api/pm-schedules`
+- `GET /api/maintenance-logs`
+- `GET/POST/PATCH /api/users`
 
-## Realtime
+## Pagination Contract
 
-Socket.IO bật chung HTTP server, xác thực bằng JWT token qua `socket.handshake.auth.token`.
+Assets/WorkOrders hỗ trợ `paginated=true&page=&limit=`:
 
-## Cấu trúc chính
+```json
+{
+  "success": true,
+  "data": {
+    "items": [],
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 500,
+      "totalPages": 25
+    }
+  }
+}
+```
 
-```text
-src/
-  config/                 # env + db
-  controllers/            # xử lý request
-  routes/                 # định tuyến API
-  services/               # nghiệp vụ
-  models/                 # mongoose schema
-  middleware/             # auth, role, security, error
-  jobs/                   # cron jobs
-  realtime/               # socket io context
+Assets trả thêm:
+
+```json
+"summary": {
+  "active": 120,
+  "in_repair": 40,
+  "idle": 30,
+  "disposed": 10
+}
 ```
