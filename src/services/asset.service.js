@@ -37,12 +37,52 @@ async function createAsset(payload) {
 }
 
 async function listAssets(query = {}, actor = null) {
-  const rows = await Asset.find(buildAssetFilter(query))
-    .sort({ _id: -1 })
-    .lean();
+  const page = Math.max(1, Number(query.page) || 1);
+  const limit = Math.min(200, Math.max(1, Number(query.limit) || 20));
+  const paginated = query.paginated === "true";
+  const filter = buildAssetFilter(query);
+
+  if (!paginated) {
+    const rows = await Asset.find(filter).sort({ _id: -1 }).lean();
+    rows.forEach((item) => stripAssetCost(item, actor));
+    return rows;
+  }
+
+  const [rows, total] = await Promise.all([
+    Asset.find(filter)
+      .sort({ _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    Asset.countDocuments(filter),
+  ]);
+  const statusRows = await Asset.aggregate([
+    { $match: filter },
+    { $group: { _id: "$status", count: { $sum: 1 } } },
+  ]);
+  const summary = {
+    active: 0,
+    in_repair: 0,
+    idle: 0,
+    disposed: 0,
+  };
+  statusRows.forEach((item) => {
+    if (summary[item._id] !== undefined) {
+      summary[item._id] = item.count;
+    }
+  });
 
   rows.forEach((item) => stripAssetCost(item, actor));
-  return rows;
+  return {
+    items: rows,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+    summary,
+  };
 }
 
 async function getAssetById(id, actor = null) {

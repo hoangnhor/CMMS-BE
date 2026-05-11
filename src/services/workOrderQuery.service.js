@@ -14,12 +14,45 @@ async function findWorkOrderOrThrow(id) {
 }
 
 async function listWorkOrders(query, actor) {
-  return WorkOrder.find(buildWorkOrderFilter(query, actor))
-    .sort({ _id: -1 })
-    .populate("assetId", "assetCode name assetType status")
-    .populate("createdBy", "name role")
-    .populate("assignedTo", "name role")
-    .lean();
+  const page = Math.max(1, Number(query?.page) || 1);
+  const limit = Math.min(200, Math.max(1, Number(query?.limit) || 20));
+  const paginated = query?.paginated === "true";
+  const filter = buildWorkOrderFilter(query, actor);
+
+  if (query?.keyword?.trim()) {
+    filter.woCode = { $regex: query.keyword.trim(), $options: "i" };
+  }
+
+  if (!paginated) {
+    return WorkOrder.find(filter)
+      .sort({ _id: -1 })
+      .populate("assetId", "assetCode name assetType status")
+      .populate("createdBy", "name role")
+      .populate("assignedTo", "name role")
+      .lean();
+  }
+
+  const [items, total] = await Promise.all([
+    WorkOrder.find(filter)
+      .sort({ _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate("assetId", "assetCode name assetType status")
+      .populate("createdBy", "name role")
+      .populate("assignedTo", "name role")
+      .lean(),
+    WorkOrder.countDocuments(filter),
+  ]);
+
+  return {
+    items,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
 }
 
 async function getWorkOrderById(id, actor) {

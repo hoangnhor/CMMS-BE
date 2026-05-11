@@ -1,189 +1,122 @@
 # Asset Management Backend API (CMMS)
 
-Backend cho hệ thống quản lý tài sản, bảo trì định kỳ (PM) và Work Order lifecycle.
+![Node.js](https://img.shields.io/badge/Node.js-Backend-339933?logo=nodedotjs&logoColor=white)
+![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?logo=mongodb&logoColor=white)
+![JWT](https://img.shields.io/badge/Auth-JWT-000000?logo=jsonwebtokens&logoColor=white)
+![Socket.IO](https://img.shields.io/badge/Realtime-Socket.IO-010101?logo=socketdotio&logoColor=white)
+![node-cron](https://img.shields.io/badge/Automation-node--cron-0F172A)
 
-## Highlights
+> Backend CMMS được thiết kế theo mindset “operations-first”: kiểm soát lifecycle WO chặt chẽ, bảo mật đa lớp, và tự động hóa PM để giảm downtime.
 
-- Secure REST API với JWT + RBAC theo vai trò
-- Work Order workflow đầy đủ, có guard theo trạng thái và quyền
-- PM scheduler tự động sinh Work Order theo trigger
-- Realtime events qua Socket.IO cho FE đồng bộ gần thời gian thực
-- Security hardening: rate-limit, payload guard, security headers, request-id
-- Seed dataset quy mô lớn (500 assets) phục vụ demo/test
+- Live API: `[TODO: add URL]`
+- Related Repositories: `[TODO: BE repo]` | `[TODO: FE repo]`
 
-## Tech Stack
+## 🔥 Điểm sáng Kỹ thuật (Technical Highlights)
 
-- Node.js
-- Express 5
-- MongoDB + Mongoose
-- JWT
-- Socket.IO
-- node-cron
+1. **Bảo mật & Phân quyền nhiều lớp (RBAC + Security Hardening)**
+   - JWT auth cho HTTP + Socket channel.
+   - RBAC middleware theo endpoint.
+   - Rate limiting, request-id, content-type enforcement, payload hardening (`$`/`.` key blocking), security headers/HSTS.
 
-## Domain Modules
+2. **Kiến trúc Layered rõ ràng cho bảo trì dài hạn**
+   - Route -> Controller -> Service -> Model.
+   - Transition logic tách riêng (query/policy/transition/completion), giảm coupling ở controller.
 
-- Auth
-- Users
-- Assets
-- Work Orders
-- PM Schedules
-- Maintenance Logs
+3. **Workflow-driven Work Order Engine**
+   - State machine nghiệp vụ: `draft -> pending_approval -> approved/rejected -> in_progress -> done -> sign-off`.
+   - Guard theo role + priority rule (`urgent` branch).
 
-## Work Order Lifecycle
+4. **Tự động hóa PM + Realtime Domain Events**
+   - Cron quét PM schedules, tự sinh WO khi due.
+   - Emit events theo domain (`asset/work_order/pm_schedule/maintenance_log/user`) cho FE đồng bộ tức thời.
 
-`draft -> pending_approval -> approved/rejected -> in_progress -> done -> sign-off`
+## 🗄️ Database Design
 
-Rule chính:
-- `admin/site_manager/technician` tạo WO
-- Approval/reject theo role + priority rule
-- Technician thực thi start/complete theo assignment
-- Admin/technician sign-off QC khi WO đã done
+| Collection | Mục đích | Quan hệ |
+|---|---|---|
+| `users` | tài khoản, role, active status | liên kết với work orders |
+| `assets` | master asset data | liên kết detail collections |
+| `machine_details` | machine telemetry/PM fields | `assetId` |
+| `mold_details` | mold shot lifecycle | `assetId` |
+| `jig_details` | jig usage/calibration | `assetId` |
+| `infra_details` | infrastructure inspection | `assetId` |
+| `pm_schedules` | PM rule/interval/next due | `assetId` |
+| `work_orders` | execution lifecycle record | `assetId`, `createdBy`, `assignedTo`, `approvedBy` |
+| `maintenance_logs` | completion findings/labor | `workOrderId`, `assetId`, `technicianId` |
+| `spare_part_used` | spare parts consumption | `workOrderId` |
 
-## PM Automation
-
-Cron job quét `PmSchedule` active:
-- Tính trigger theo loại tài sản (`days/hours/shots/usage_count`)
-- Nếu đến ngưỡng `nextDueValue` thì sinh WO PM
-- Cập nhật `lastTriggeredValue` + `nextDueValue`
-
-## Realtime Events
-
-Backend emit:
-- `asset.changed`
-- `work_order.changed`
-- `maintenance_log.changed`
-- `pm_schedule.changed`
-- `user.changed`
-
-Socket auth qua JWT token (`socket.handshake.auth.token`).
-
-## Security
-
-- JWT auth middleware
-- Role middleware (RBAC)
-- Rate limit (global + auth endpoint)
-- Content-Type enforcement (`application/json`)
-- Unsafe payload blocking (`$`, `.` keys)
-- Security headers (CSP, HSTS in production, X-Frame-Options...)
-- Request tracing với `X-Request-Id`
-
-## Project Structure
+## 🔄 Luồng nghiệp vụ cốt lõi (Core Flow)
 
 ```text
-src/
-  config/                 # env + db
-  controllers/            # HTTP handlers
-  routes/                 # route definitions
-  services/               # business logic
-  models/                 # mongoose schemas
-  middleware/             # auth/role/security/error
-  jobs/                   # cron jobs
-  realtime/               # socket emit context
-  utils/                  # shared validators/helpers
+[Authentication]
+  -> POST /api/auth/login
+  -> issue JWT
+  -> middleware auth verify + user active check
+
+[PM Auto WO]
+  -> cron tick
+  -> read active pm_schedules
+  -> compute current trigger value by asset type
+  -> if due: create PM work order
+  -> update due cursor + emit realtime event
+
+[Work Order Lifecycle]
+  draft
+   -> submit
+   -> approve/reject
+   -> start (assigned technician)
+   -> complete (maintenance log + spare parts)
+   -> sign-off
 ```
 
-## Environment
-
-Tạo `backend/.env`:
-
-```env
-NODE_ENV=development
-PORT=5000
-MONGO_URI=mongodb://127.0.0.1:27017/asset_management
-JWT_SECRET=your_super_secret_key_at_least_32_chars_for_prod
-JWT_EXPIRES_IN=7d
-FRONTEND_ORIGIN=http://localhost:5173
-PM_CHECK_CRON=0 6 * * *
-SYSTEM_USER_ID=
-TRUST_PROXY=false
-JSON_LIMIT=1mb
-RATE_LIMIT_WINDOW_MS=60000
-RATE_LIMIT_MAX=600
-AUTH_RATE_LIMIT_WINDOW_MS=60000
-AUTH_RATE_LIMIT_MAX=20
-SHUTDOWN_TIMEOUT_MS=10000
-```
-
-Required:
-- `MONGO_URI`
-- `JWT_SECRET`
-
-Production notes:
-- `FRONTEND_ORIGIN` không được là `*`
-- `JWT_SECRET` nên >= 32 ký tự
-
-## Local Setup
+## 🚀 Cài đặt & Khởi chạy (Local Development)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Server mặc định: `http://localhost:5000`
+### `.env`
 
-## Seed Data
+```env
+NODE_ENV=
+PORT=
+MONGO_URI=
+JWT_SECRET=
+JWT_EXPIRES_IN=
+FRONTEND_ORIGIN=
+PM_CHECK_CRON=
+SYSTEM_USER_ID=
+TRUST_PROXY=
+JSON_LIMIT=
+RATE_LIMIT_WINDOW_MS=
+RATE_LIMIT_MAX=
+AUTH_RATE_LIMIT_WINDOW_MS=
+AUTH_RATE_LIMIT_MAX=
+SHUTDOWN_TIMEOUT_MS=
+```
+
+### Lệnh chính
 
 ```bash
+npm run dev
 npm run seed
-```
-
-Seed tạo:
-- 5 users (đa vai trò)
-- 500 assets
-- PM schedules
-- Work orders + maintenance logs + spare parts history
-
-Default accounts:
-- `admin@factory.local / password123`
-- `manager@factory.local / password123`
-- `tech1@factory.local / password123`
-- `tech2@factory.local / password123`
-- `accountant@factory.local / password123`
-
-## Test
-
-```bash
 npm run test
+npm run start
 ```
 
-## API Overview
+## 📂 Cấu trúc mã nguồn (Folder Structure)
 
-- `GET /api/health`
-- `GET /api/ready`
-- `POST /api/auth/login`
-- `GET /api/auth/me`
-- `GET/POST/PUT/DELETE /api/assets`
-- `GET/POST/PUT/... /api/work-orders` (+ workflow actions)
-- `GET/POST/PUT /api/pm-schedules`
-- `GET /api/maintenance-logs`
-- `GET/POST/PATCH /api/users`
-
-## Pagination Contract
-
-Assets/WorkOrders hỗ trợ `paginated=true&page=&limit=`:
-
-```json
-{
-  "success": true,
-  "data": {
-    "items": [],
-    "pagination": {
-      "page": 1,
-      "limit": 20,
-      "total": 500,
-      "totalPages": 25
-    }
-  }
-}
-```
-
-Assets trả thêm:
-
-```json
-"summary": {
-  "active": 120,
-  "in_repair": 40,
-  "idle": 30,
-  "disposed": 10
-}
+```text
+src/
+├─ config/                   # env parser + db bootstrap
+├─ controllers/              # HTTP handlers + realtime emit hooks
+├─ jobs/                     # scheduled jobs (pm checker)
+├─ middleware/               # auth, role, security, error handling
+├─ models/                   # mongoose schemas
+├─ realtime/                 # socket context + emit gateway
+├─ routes/                   # API route boundaries
+├─ services/                 # business/core domain logic
+└─ utils/                    # validators + helpers
 ```
