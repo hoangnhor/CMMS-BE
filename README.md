@@ -9,7 +9,7 @@
 
 > Backend CMMS theo hướng operations-first: workflow WO chặt chẽ, bảo mật đa lớp và tự động hóa PM để giảm downtime.
 
-- Live API: `[TODO]`
+- Live API: `https://htcmms.vercel.app/auth`
 - Related Repositories: `[TODO: BE repo]` | `[TODO: FE repo]`
 
 ## 🔥 Điểm sáng Kỹ thuật (Technical Highlights)
