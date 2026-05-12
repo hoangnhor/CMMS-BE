@@ -54,13 +54,16 @@ function blockUnsafePayload(req, res, next) {
 }
 
 function createRateLimiter({ windowMs, max, name }) {
+  const safeWindowMs = Number.isInteger(windowMs) && windowMs > 0 ? windowMs : 60000;
+  const safeMax = Number.isInteger(max) && max > 0 ? max : 100;
+  const safeName = name || "global";
   const buckets = new Map();
   let lastSweepAt = 0;
 
   return (req, res, next) => {
     const now = Date.now();
 
-    if (now - lastSweepAt >= windowMs) {
+    if (now - lastSweepAt >= safeWindowMs) {
       for (const [bucketKey, bucket] of buckets.entries()) {
         if (bucket.resetAt <= now) {
           buckets.delete(bucketKey);
@@ -70,16 +73,16 @@ function createRateLimiter({ windowMs, max, name }) {
     }
 
     const ip = req.ip || req.socket?.remoteAddress || "unknown";
-    const key = `${name}:${ip}`;
+    const key = `${safeName}:${ip}`;
     const current = buckets.get(key);
 
     if (!current || current.resetAt <= now) {
-      buckets.set(key, { count: 1, resetAt: now + windowMs });
+      buckets.set(key, { count: 1, resetAt: now + safeWindowMs });
       return next();
     }
 
     current.count += 1;
-    if (current.count > max) {
+    if (current.count > safeMax) {
       const retryAfter = Math.ceil((current.resetAt - now) / 1000);
       res.setHeader("Retry-After", String(retryAfter));
       return res.status(429).json({

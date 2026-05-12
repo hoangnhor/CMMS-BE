@@ -43,6 +43,14 @@ function parsePositiveInt(value, fallback, label) {
   return parsed;
 }
 
+function parseBoolean(value, fallback, label) {
+  const raw = sanitizeEnvValue(value).toLowerCase();
+  if (!raw) return fallback;
+  if (raw === "true") return true;
+  if (raw === "false") return false;
+  throw new Error(`${label} phải là true hoặc false`);
+}
+
 function getEnv() {
   const missing = requiredVars.filter((key) => !process.env[key]);
   if (missing.length) {
@@ -51,7 +59,11 @@ function getEnv() {
 
   const mongoUri = normalizeMongoUri(process.env.MONGO_URI);
   const jwtSecret = sanitizeEnvValue(process.env.JWT_SECRET);
+  const jwtExpiresIn = sanitizeEnvValue(process.env.JWT_EXPIRES_IN || "7d");
   const frontendOrigin = parseOrigins(process.env.FRONTEND_ORIGIN || "*");
+  if (!jwtExpiresIn) {
+    throw new Error("JWT_EXPIRES_IN không hợp lệ");
+  }
 
   if (process.env.NODE_ENV === "production") {
     if (frontendOrigin === "*") {
@@ -94,11 +106,11 @@ function getEnv() {
     port,
     mongoUri,
     jwtSecret,
-    jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
+    jwtExpiresIn,
     frontendOrigin,
     pmCron: process.env.PM_CHECK_CRON || "0 6 * * *",
     systemUserId: process.env.SYSTEM_USER_ID || null,
-    trustProxy: process.env.TRUST_PROXY === "true",
+    trustProxy: parseBoolean(process.env.TRUST_PROXY, false, "TRUST_PROXY"),
     jsonLimit: process.env.JSON_LIMIT || "1mb",
     globalRateLimitWindowMs,
     globalRateLimitMax,
