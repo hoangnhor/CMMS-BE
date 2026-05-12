@@ -33,6 +33,16 @@ function parseOrigins(value) {
   return origins.length > 0 ? origins : "*";
 }
 
+function parsePositiveInt(value, fallback, label) {
+  const raw = sanitizeEnvValue(value);
+  if (!raw) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${label} phải là số nguyên dương`);
+  }
+  return parsed;
+}
+
 function getEnv() {
   const missing = requiredVars.filter((key) => !process.env[key]);
   if (missing.length) {
@@ -52,9 +62,36 @@ function getEnv() {
     }
   }
 
+  const port = parsePositiveInt(process.env.PORT, 5000, "PORT");
+  const globalRateLimitWindowMs = parsePositiveInt(
+    process.env.RATE_LIMIT_WINDOW_MS,
+    60000,
+    "RATE_LIMIT_WINDOW_MS"
+  );
+  const globalRateLimitMax = parsePositiveInt(
+    process.env.RATE_LIMIT_MAX,
+    600,
+    "RATE_LIMIT_MAX"
+  );
+  const authRateLimitWindowMs = parsePositiveInt(
+    process.env.AUTH_RATE_LIMIT_WINDOW_MS,
+    60000,
+    "AUTH_RATE_LIMIT_WINDOW_MS"
+  );
+  const authRateLimitMax = parsePositiveInt(
+    process.env.AUTH_RATE_LIMIT_MAX,
+    20,
+    "AUTH_RATE_LIMIT_MAX"
+  );
+  const shutdownTimeoutMs = parsePositiveInt(
+    process.env.SHUTDOWN_TIMEOUT_MS,
+    10000,
+    "SHUTDOWN_TIMEOUT_MS"
+  );
+
   return {
     nodeEnv: process.env.NODE_ENV || "development",
-    port: Number(process.env.PORT || 5000),
+    port,
     mongoUri,
     jwtSecret,
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || "7d",
@@ -63,11 +100,11 @@ function getEnv() {
     systemUserId: process.env.SYSTEM_USER_ID || null,
     trustProxy: process.env.TRUST_PROXY === "true",
     jsonLimit: process.env.JSON_LIMIT || "1mb",
-    globalRateLimitWindowMs: Number(process.env.RATE_LIMIT_WINDOW_MS || 60000),
-    globalRateLimitMax: Number(process.env.RATE_LIMIT_MAX || 600),
-    authRateLimitWindowMs: Number(process.env.AUTH_RATE_LIMIT_WINDOW_MS || 60000),
-    authRateLimitMax: Number(process.env.AUTH_RATE_LIMIT_MAX || 20),
-    shutdownTimeoutMs: Number(process.env.SHUTDOWN_TIMEOUT_MS || 10000),
+    globalRateLimitWindowMs,
+    globalRateLimitMax,
+    authRateLimitWindowMs,
+    authRateLimitMax,
+    shutdownTimeoutMs,
   };
 }
 

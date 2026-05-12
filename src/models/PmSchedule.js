@@ -26,6 +26,10 @@ const pmScheduleSchema = new mongoose.Schema(
   { versionKey: false }
 );
 
+pmScheduleSchema.index({ assetId: 1, isActive: 1 });
+pmScheduleSchema.index({ isActive: 1, nextDueValue: 1 });
+pmScheduleSchema.index({ triggerType: 1, isActive: 1 });
+
 pmScheduleSchema.pre("validate", async function validateSchedule() {
   const asset = await Asset.findById(this.assetId).lean();
   if (!asset) throw httpError(404, "Không tìm thấy tài sản cho lịch PM");

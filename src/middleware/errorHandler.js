@@ -1,5 +1,7 @@
-﻿function errorHandler(err, req, res, next) {
+function errorHandler(err, req, res, next) {
   if (res.headersSent) return next(err);
+
+  const isProduction = req.app?.get("env") === "production";
   let status = err.statusCode || 500;
   let message = err.message || "Lỗi hệ thống";
 
@@ -17,6 +19,21 @@
   } else if (err.name === "JsonWebTokenError" || err.name === "TokenExpiredError") {
     status = 401;
     message = "Token không hợp lệ hoặc đã hết hạn";
+  }
+
+  if (status >= 500) {
+    console.error("[error]", {
+      requestId: req.id,
+      method: req.method,
+      path: req.originalUrl,
+      status,
+      message: err.message,
+      stack: err.stack,
+    });
+  }
+
+  if (isProduction && status >= 500) {
+    message = "Lỗi hệ thống";
   }
 
   return res.status(status).json({

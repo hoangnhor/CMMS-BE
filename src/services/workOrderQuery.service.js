@@ -6,6 +6,13 @@ const {
   buildWorkOrderFilter,
   canViewWorkOrder,
 } = require("./workOrderPolicy.service");
+const { parsePagination } = require("../utils/pagination");
+
+const MAX_KEYWORD_LENGTH = 80;
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 async function findWorkOrderOrThrow(id) {
   const workOrder = await WorkOrder.findById(id);
@@ -14,13 +21,14 @@ async function findWorkOrderOrThrow(id) {
 }
 
 async function listWorkOrders(query, actor) {
-  const page = Math.max(1, Number(query?.page) || 1);
-  const limit = Math.min(200, Math.max(1, Number(query?.limit) || 20));
-  const paginated = query?.paginated === "true";
+  const { page, limit, skip, paginated } = parsePagination(query || {});
   const filter = buildWorkOrderFilter(query, actor);
 
   if (query?.keyword?.trim()) {
-    filter.woCode = { $regex: query.keyword.trim(), $options: "i" };
+    const safeKeyword = escapeRegex(
+      String(query.keyword).trim().slice(0, MAX_KEYWORD_LENGTH)
+    );
+    filter.woCode = { $regex: safeKeyword, $options: "i" };
   }
 
   if (!paginated) {
@@ -35,7 +43,7 @@ async function listWorkOrders(query, actor) {
   const [items, total] = await Promise.all([
     WorkOrder.find(filter)
       .sort({ _id: -1 })
-      .skip((page - 1) * limit)
+      .skip(skip)
       .limit(limit)
       .populate("assetId", "assetCode name assetType status")
       .populate("createdBy", "name role")

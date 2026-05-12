@@ -19,4 +19,8 @@ const assetSchema = new mongoose.Schema(
   { versionKey: false }
 );
 
+assetSchema.index({ status: 1, assetType: 1 });
+assetSchema.index({ name: 1 });
+assetSchema.index({ location: 1 });
+
 module.exports = mongoose.model("Asset", assetSchema);

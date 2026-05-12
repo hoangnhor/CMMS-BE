@@ -32,6 +32,11 @@ const detailFieldsByType = {
   infrastructure: ["operatingHours", "pmIntervalDays", "lastInspectionDate", "nextInspectionDate"],
 };
 const stringDetailFields = ["alarmCode", "storageLocation"];
+const MAX_KEYWORD_LENGTH = 80;
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 function dropUndefined(value) {
   return Object.fromEntries(
@@ -101,10 +106,12 @@ function buildAssetFilter(query = {}) {
   if (assetType) filter.assetType = requireEnum(assetType, assetTypes, "Loại tài sản");
   if (status) filter.status = requireEnum(status, assetStatuses, "Trạng thái tài sản");
   if (keyword) {
+    const safeKeyword = escapeRegex(String(keyword).trim().slice(0, MAX_KEYWORD_LENGTH));
+    if (!safeKeyword) return filter;
     filter.$or = [
-      { assetCode: { $regex: keyword, $options: "i" } },
-      { name: { $regex: keyword, $options: "i" } },
-      { location: { $regex: keyword, $options: "i" } },
+      { assetCode: { $regex: safeKeyword, $options: "i" } },
+      { name: { $regex: safeKeyword, $options: "i" } },
+      { location: { $regex: safeKeyword, $options: "i" } },
     ];
   }
   return filter;

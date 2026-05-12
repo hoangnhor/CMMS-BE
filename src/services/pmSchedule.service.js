@@ -10,6 +10,7 @@ const {
   requireEnum,
   requireObjectId,
 } = require("../utils/validators");
+const { parsePagination } = require("../utils/pagination");
 
 const triggerTypes = ["hours", "shots", "days", "usage_count"];
 const PM_SCHEDULE_ALLOWED_FIELDS = [
@@ -141,10 +142,35 @@ async function createPmSchedule(payload) {
 }
 
 async function listPmSchedules(query) {
-  return PmSchedule.find(buildListFilter(query))
-    .sort({ _id: -1 })
-    .populate("assetId", "assetCode name assetType status")
-    .lean();
+  const { paginated, page, limit, skip } = parsePagination(query || {});
+  const filter = buildListFilter(query || {});
+
+  if (!paginated) {
+    return PmSchedule.find(filter)
+      .sort({ _id: -1 })
+      .populate("assetId", "assetCode name assetType status")
+      .lean();
+  }
+
+  const [items, total] = await Promise.all([
+    PmSchedule.find(filter)
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limit)
+      .populate("assetId", "assetCode name assetType status")
+      .lean(),
+    PmSchedule.countDocuments(filter),
+  ]);
+
+  return {
+    items,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    },
+  };
 }
 
 async function getPmScheduleById(id) {

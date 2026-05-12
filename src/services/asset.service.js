@@ -11,6 +11,7 @@ const {
   upsertAssetDetail,
 } = require("./assetDetail.service");
 const { hardDeleteAssetById } = require("./assetCascadeDelete.service");
+const { parsePagination } = require("../utils/pagination");
 
 async function findAssetOrThrow(id, { lean = false } = {}) {
   const query = Asset.findById(id);
@@ -37,9 +38,7 @@ async function createAsset(payload) {
 }
 
 async function listAssets(query = {}, actor = null) {
-  const page = Math.max(1, Number(query.page) || 1);
-  const limit = Math.min(200, Math.max(1, Number(query.limit) || 20));
-  const paginated = query.paginated === "true";
+  const { page, limit, skip, paginated } = parsePagination(query);
   const filter = buildAssetFilter(query);
 
   if (!paginated) {
@@ -51,7 +50,7 @@ async function listAssets(query = {}, actor = null) {
   const [rows, total] = await Promise.all([
     Asset.find(filter)
       .sort({ _id: -1 })
-      .skip((page - 1) * limit)
+      .skip(skip)
       .limit(limit)
       .lean(),
     Asset.countDocuments(filter),

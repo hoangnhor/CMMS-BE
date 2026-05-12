@@ -27,5 +27,6 @@ const maintenanceLogSchema = new mongoose.Schema(
 );
 
 maintenanceLogSchema.index({ assetId: 1, completedAt: -1 });
+maintenanceLogSchema.index({ technicianId: 1, completedAt: -1 });
 
 module.exports = mongoose.model("MaintenanceLog", maintenanceLogSchema);

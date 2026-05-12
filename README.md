@@ -12,11 +12,11 @@
 - Live API: `https://cmms-be.onrender.com/api/health`
 - Related Repositories: `https://github.com/hoangnhor/CMMS-BE` | `https://github.com/hoangnhor/CMMS-FE`
 
-## 🔥 Điểm sáng Kỹ thuật (Technical Highlights)
+## 🔥 Technical Highlights
 
 1. RBAC + security hardening (JWT, role middleware, rate limit, payload guard, security headers).
-2. Kiến trúc layered: routes -> controllers -> services -> models.
-3. Workflow engine cho Work Order lifecycle theo state + role rules.
+2. Layered architecture: routes -> controllers -> services -> models.
+3. Work Order lifecycle theo role/state.
 4. PM automation với node-cron + realtime events.
 
 ## 🗄️ Database Design
@@ -34,7 +34,7 @@
 | `maintenance_logs` | WO completion logs |
 | `spare_part_used` | spare parts consumption |
 
-## 🔄 Luồng nghiệp vụ cốt lõi (Core Flow)
+## 🔄 Core Flow
 
 ```text
 Auth Login -> JWT Verify -> RBAC
@@ -42,43 +42,93 @@ Cron Tick -> Evaluate PM Due -> Create PM Work Order
 WO: draft -> pending_approval -> approved/rejected -> in_progress -> done -> sign-off
 ```
 
-## 🚀 Cài đặt & Khởi chạy (Local Development)
+## 🚀 Local Setup
 
 ```bash
 npm install
 npm run dev
 ```
 
-### `.env`
+### `.env` (required)
 
 ```env
-NODE_ENV=
-PORT=
-MONGO_URI=
-JWT_SECRET=
-JWT_EXPIRES_IN=
-FRONTEND_ORIGIN=
-PM_CHECK_CRON=
+NODE_ENV=development
+PORT=5000
+MONGO_URI=mongodb://localhost:27017/asset_management
+JWT_SECRET=replace_with_32_plus_chars_secret
+JWT_EXPIRES_IN=7d
+FRONTEND_ORIGIN=http://localhost:5173
+PM_CHECK_CRON=0 6 * * *
 SYSTEM_USER_ID=
-TRUST_PROXY=
-JSON_LIMIT=
-RATE_LIMIT_WINDOW_MS=
-RATE_LIMIT_MAX=
-AUTH_RATE_LIMIT_WINDOW_MS=
-AUTH_RATE_LIMIT_MAX=
-SHUTDOWN_TIMEOUT_MS=
+TRUST_PROXY=false
+JSON_LIMIT=1mb
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX=600
+AUTH_RATE_LIMIT_WINDOW_MS=60000
+AUTH_RATE_LIMIT_MAX=20
+SHUTDOWN_TIMEOUT_MS=10000
 ```
 
-### Lệnh chính
+### Env Validation Rules
 
-```bash
-npm run dev
-npm run seed
-npm run test
-npm run start
-```
+- `MONGO_URI` phải bắt đầu bằng `mongodb://` hoặc `mongodb+srv://`.
+- `JWT_SECRET` bắt buộc; production tối thiểu 32 ký tự.
+- `FRONTEND_ORIGIN` production không được `*`.
+- `PORT`, `RATE_LIMIT_*`, `AUTH_RATE_LIMIT_*`, `SHUTDOWN_TIMEOUT_MS` phải là số nguyên dương.
 
-## 📂 Cấu trúc mã nguồn (Folder Structure)
+## 🔌 API Usage Notes
+
+- Base URL local: `http://localhost:5000/api`
+- Auth: `Authorization: Bearer <token>`
+- Response chuẩn: `{ success, data|message, requestId? }`
+- List endpoints hỗ trợ `paginated=true&page=1&limit=20` (ở các endpoint đã bật).
+
+## ❤️ Health / Readiness
+
+- Health check: `GET /api/health`
+- Readiness check (DB state): `GET /api/ready`
+
+## 🧪 Seed / Demo Notes
+
+- Seed command: `npm run seed`
+- Dữ liệu seed tạo user/asset/work orders mẫu để demo UI và workflow.
+- Không dùng tài khoản seed mặc định trên production.
+
+## 🛡️ Security Checklist
+
+- [ ] `NODE_ENV=production`
+- [ ] `JWT_SECRET` >= 32 ký tự, rotate theo chu kỳ
+- [ ] `FRONTEND_ORIGIN` set domain cụ thể
+- [ ] Không commit `.env`
+- [ ] Bật HTTPS ở reverse proxy/platform
+- [ ] Kiểm tra rate limit theo tải thực tế
+- [ ] Theo dõi log lỗi 5xx theo `requestId`
+
+## 🚢 Deployment Notes
+
+- Platform phù hợp: Render / Railway / VPS.
+- Cần set đầy đủ env như trên.
+- Bật `TRUST_PROXY=true` khi chạy sau reverse proxy.
+- Kiểm tra sau deploy:
+  1. `GET /api/health` trả `success: true`
+  2. `GET /api/ready` trả HTTP `200`
+  3. Login và gọi API protected thành công
+
+## 📝 Logging Consistency
+
+- HTTP logs qua `morgan`, có `requestId`.
+- Error response luôn kèm `requestId` để trace.
+- Lỗi 5xx được log server-side, không trả stack trace cho client production.
+
+## ✅ Final Release Checklist
+
+1. `npm run test` pass.
+2. DB indexes đã apply.
+3. Env production đã kiểm tra và secrets rotate.
+4. Health/ready endpoint pass sau deploy.
+5. Frontend domain đã whitelisted qua `FRONTEND_ORIGIN`.
+
+## 📂 Source Structure
 
 ```text
 src/

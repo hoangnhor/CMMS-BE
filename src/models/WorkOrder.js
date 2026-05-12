@@ -45,5 +45,7 @@ workOrderSchema.index({ assetId: 1, status: 1 });
 workOrderSchema.index({ priority: 1, status: 1 });
 workOrderSchema.index({ assignedTo: 1, status: 1 });
 workOrderSchema.index({ triggerSource: 1, status: 1 });
+workOrderSchema.index({ status: 1, scheduledDate: 1 });
+workOrderSchema.index({ createdBy: 1, status: 1 });
 
 module.exports = mongoose.model("WorkOrder", workOrderSchema);

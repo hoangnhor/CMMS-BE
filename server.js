@@ -29,8 +29,22 @@ const maintenanceLogRoutes = require("./src/routes/maintenanceLog.routes");
 function buildCorsOrigin(originConfig) {
   if (originConfig === "*") return true;
   if (Array.isArray(originConfig)) {
+    const rules = originConfig.map((item) => {
+      const value = String(item || "").trim();
+      if (!value.includes("*")) return value;
+      const escaped = value.replace(/[.+?^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
+      return new RegExp(`^${escaped}$`, "i");
+    });
+
     return (origin, callback) => {
-      if (!origin || originConfig.includes(origin)) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+      const allowed = rules.some((rule) =>
+        typeof rule === "string" ? rule === origin : rule.test(origin)
+      );
+      if (allowed) {
         callback(null, true);
         return;
       }
