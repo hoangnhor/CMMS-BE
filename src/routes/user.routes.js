@@ -10,5 +10,6 @@ router.use(auth, role("admin"));
 router.get("/", userController.listUsers);
 router.post("/", userController.createUser);
 router.patch("/:id/status", validateObjectIdParam("id"), userController.updateUserStatus);
+router.delete("/:id", validateObjectIdParam("id"), userController.deleteUser);
 
 module.exports = router;

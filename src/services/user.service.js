@@ -75,8 +75,21 @@ async function updateUserStatus(id, payload, actorId) {
   return user;
 }
 
+async function deleteUser(id, actorId) {
+  if (String(id) === String(actorId)) {
+    throw httpError(400, "Không thể xóa chính tài khoản đang đăng nhập");
+  }
+
+  const user = await User.findByIdAndDelete(id).select("-passwordHash").lean();
+  if (!user) {
+    throw httpError(404, "Không tìm thấy người dùng");
+  }
+  return user;
+}
+
 module.exports = {
   listUsers,
   createUser,
   updateUserStatus,
+  deleteUser,
 };

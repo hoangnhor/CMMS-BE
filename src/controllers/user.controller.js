@@ -37,8 +37,15 @@ const updateUserStatus = withHandler(async (req, res) => {
   res.json({ success: true, data });
 });
 
+const deleteUser = withHandler(async (req, res) => {
+  const data = await userService.deleteUser(req.params.id, req.user._id);
+  emitUserChanged("deleted", data);
+  res.json({ success: true, data });
+});
+
 module.exports = {
   listUsers,
   createUser,
   updateUserStatus,
+  deleteUser,
 };
