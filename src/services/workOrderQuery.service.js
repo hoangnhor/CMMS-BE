@@ -5,6 +5,7 @@ const { httpError } = require("../utils/httpError");
 const {
   buildWorkOrderFilter,
   canViewWorkOrder,
+  buildWorkOrderCapabilities,
 } = require("./workOrderPolicy.service");
 const { parsePagination } = require("../utils/pagination");
 
@@ -12,6 +13,13 @@ const MAX_KEYWORD_LENGTH = 80;
 
 function escapeRegex(value) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function attachCapabilities(actor, wo) {
+  return {
+    ...wo,
+    capabilities: buildWorkOrderCapabilities(actor, wo),
+  };
 }
 
 async function findWorkOrderOrThrow(id) {
@@ -32,12 +40,13 @@ async function listWorkOrders(query, actor) {
   }
 
   if (!paginated) {
-    return WorkOrder.find(filter)
+    const items = await WorkOrder.find(filter)
       .sort({ _id: -1 })
       .populate("assetId", "assetCode name assetType status")
       .populate("createdBy", "name role")
       .populate("assignedTo", "name role")
       .lean();
+    return items.map((wo) => attachCapabilities(actor, wo));
   }
 
   const [items, total] = await Promise.all([
@@ -53,7 +62,7 @@ async function listWorkOrders(query, actor) {
   ]);
 
   return {
-    items,
+    items: items.map((wo) => attachCapabilities(actor, wo)),
     pagination: {
       page,
       limit,
@@ -86,7 +95,12 @@ async function getWorkOrderById(id, actor) {
     });
   }
 
-  return { ...wo, maintenanceLog: log, sparePartsUsed: parts };
+  return {
+    ...wo,
+    capabilities: buildWorkOrderCapabilities(actor, wo),
+    maintenanceLog: log,
+    sparePartsUsed: parts,
+  };
 }
 
 module.exports = {

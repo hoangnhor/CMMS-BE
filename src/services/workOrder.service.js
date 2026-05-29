@@ -31,7 +31,7 @@ async function createWorkOrder(payload, actor) {
   const assetId = await ensureAssetExists(payload.assetId);
 
   const wo = await WorkOrder.create({
-    woCode: generateWoCode("WO"),
+    woCode: await generateWoCode("WO"),
     woType: parsed.woType,
     triggerSource: parsed.triggerSource,
     priority: parsed.priority,
@@ -56,15 +56,37 @@ async function createWorkOrderFromPmSchedule(scheduleId, actorId = null) {
 
   const creatorId = await resolvePmCreatorId(actorId);
 
-  const wo = await WorkOrder.create({
-    woCode: generateWoCode("WO"),
-    woType: "PM",
-    triggerSource: "pm_schedule",
-    priority: "medium",
-    assetId: schedule.assetId._id,
-    createdBy: creatorId,
-    status: "draft",
-  });
+  const existed = await WorkOrder.findOne({
+    pmScheduleId: schedule._id,
+    pmTriggeredValue: currentValue,
+  }).lean();
+  if (existed) {
+    return existed;
+  }
+
+  let wo;
+  try {
+    wo = await WorkOrder.create({
+      woCode: await generateWoCode("WO"),
+      woType: "PM",
+      triggerSource: "pm_schedule",
+      priority: "medium",
+      assetId: schedule.assetId._id,
+      createdBy: creatorId,
+      status: "draft",
+      pmScheduleId: schedule._id,
+      pmTriggeredValue: currentValue,
+    });
+  } catch (error) {
+    if (error?.code === 11000) {
+      const duplicate = await WorkOrder.findOne({
+        pmScheduleId: schedule._id,
+        pmTriggeredValue: currentValue,
+      }).lean();
+      if (duplicate) return duplicate;
+    }
+    throw error;
+  }
 
   schedule.lastTriggeredValue = currentValue;
   schedule.nextDueValue = currentValue + schedule.intervalValue;

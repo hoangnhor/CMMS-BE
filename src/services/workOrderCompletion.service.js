@@ -20,20 +20,23 @@ function normalizeSpareParts(parts) {
   }));
 }
 
-async function syncSparePartsUsed(workOrderId, spareParts) {
+async function syncSparePartsUsed(workOrderId, spareParts, options = {}) {
+  const { session } = options;
+  await SparePartUsed.deleteMany({ workOrderId }, { session });
   if (!spareParts.length) return;
-  await SparePartUsed.deleteMany({ workOrderId });
   await SparePartUsed.insertMany(
     spareParts.map((part) => ({
       workOrderId,
       partName: part.partName,
       qty: part.qty,
       unitCost: part.unitCost,
-    }))
+    })),
+    { session }
   );
 }
 
-async function upsertCompletionLog(workOrder, actorId, payload, laborHours) {
+async function upsertCompletionLog(workOrder, actorId, payload, laborHours, options = {}) {
+  const { session } = options;
   await MaintenanceLog.findOneAndUpdate(
     { workOrderId: workOrder._id },
     {
@@ -47,7 +50,7 @@ async function upsertCompletionLog(workOrder, actorId, payload, laborHours) {
         ? normalizeNumber(payload.shotAtMaintenance, "Shot tại thời điểm bảo trì", { min: 0 })
         : null,
     },
-    { upsert: true, returnDocument: "after" }
+    { upsert: true, returnDocument: "after", session }
   );
 }
 

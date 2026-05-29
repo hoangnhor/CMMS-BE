@@ -126,6 +126,49 @@ function assertAssignedTechnician(wo, actor, message) {
   }
 }
 
+function canEditWorkOrder(actor, wo) {
+  if (!actor || !wo) return false;
+  if (!["draft", "rejected"].includes(wo.status)) return false;
+  if (["admin", "site_manager"].includes(actor.role)) return true;
+  return String(wo.createdBy?._id || wo.createdBy || "") === String(actor._id);
+}
+
+function canApproveWorkOrder(actor, wo) {
+  if (!actor || !wo) return false;
+  if (wo.priority === "urgent") {
+    return ["admin", "site_manager"].includes(actor.role) && ["draft", "pending_approval"].includes(wo.status);
+  }
+  return ["admin", "technician"].includes(actor.role) && wo.status === "pending_approval";
+}
+
+function canStartWorkOrder(actor, wo) {
+  if (!actor || !wo) return false;
+  if (actor.role !== "technician" || wo.status !== "approved") return false;
+  if (!wo.assignedTo) return wo.priority === "urgent";
+  return String(wo.assignedTo?._id || wo.assignedTo || "") === String(actor._id);
+}
+
+function canCompleteWorkOrder(actor, wo) {
+  if (!actor || !wo) return false;
+  if (actor.role !== "technician" || wo.status !== "in_progress") return false;
+  return String(wo.assignedTo?._id || wo.assignedTo || "") === String(actor._id);
+}
+
+function canSignOffWorkOrder(actor, wo) {
+  if (!actor || !wo) return false;
+  return ["admin", "technician"].includes(actor.role) && wo.status === "done";
+}
+
+function buildWorkOrderCapabilities(actor, wo) {
+  return {
+    canEdit: canEditWorkOrder(actor, wo),
+    canApprove: canApproveWorkOrder(actor, wo),
+    canStart: canStartWorkOrder(actor, wo),
+    canComplete: canCompleteWorkOrder(actor, wo),
+    canSignOff: canSignOffWorkOrder(actor, wo),
+  };
+}
+
 async function resolvePmCreatorId(actorId) {
   if (actorId) return actorId;
 
@@ -156,4 +199,5 @@ module.exports = {
   assertTechnicianActor,
   assertAssignedTechnician,
   resolvePmCreatorId,
+  buildWorkOrderCapabilities,
 };

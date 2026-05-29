@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { createClient } = require("redis");
 
 function requestId(req, res, next) {
   const incomingId = req.headers["x-request-id"];
@@ -53,15 +54,72 @@ function blockUnsafePayload(req, res, next) {
   return next();
 }
 
-function createRateLimiter({ windowMs, max, name }) {
+let redisClient = null;
+let redisInit = null;
+let redisWarned = false;
+
+async function getRedisClient(redisUrl) {
+  if (!redisUrl) return null;
+  if (redisClient?.isReady) return redisClient;
+  if (redisInit) return redisInit;
+
+  redisClient = createClient({ url: redisUrl });
+  redisClient.on("error", (error) => {
+    if (!redisWarned) {
+      redisWarned = true;
+      console.warn("[rate-limit] Redis unavailable, fallback memory:", error?.message || error);
+    }
+  });
+
+  redisInit = redisClient
+    .connect()
+    .then(() => redisClient)
+    .catch(() => null)
+    .finally(() => {
+      redisInit = null;
+    });
+
+  return redisInit;
+}
+
+function createRateLimiter({ windowMs, max, name, redisUrl = null, redisPrefix = "am:rl" }) {
   const safeWindowMs = Number.isInteger(windowMs) && windowMs > 0 ? windowMs : 60000;
   const safeMax = Number.isInteger(max) && max > 0 ? max : 100;
   const safeName = name || "global";
   const buckets = new Map();
   let lastSweepAt = 0;
 
-  return (req, res, next) => {
+  return async (req, res, next) => {
+    const ip = req.ip || req.socket?.remoteAddress || "unknown";
+    const key = `${safeName}:${ip}`;
     const now = Date.now();
+
+    const client = await getRedisClient(redisUrl);
+    if (client?.isReady) {
+      try {
+        const redisKey = `${redisPrefix}:${key}`;
+        const count = await client.incr(redisKey);
+        if (count === 1) {
+          await client.pexpire(redisKey, safeWindowMs);
+        }
+        if (count > safeMax) {
+          const ttlMs = await client.pttl(redisKey);
+          const retryAfter = Math.max(1, Math.ceil((ttlMs > 0 ? ttlMs : safeWindowMs) / 1000));
+          res.setHeader("Retry-After", String(retryAfter));
+          return res.status(429).json({
+            success: false,
+            message: "Quá nhiều yêu cầu, vui lòng thử lại sau",
+            requestId: req.id,
+          });
+        }
+        return next();
+      } catch (error) {
+        if (!redisWarned) {
+          redisWarned = true;
+          console.warn("[rate-limit] Redis runtime error, fallback memory:", error?.message || error);
+        }
+      }
+    }
 
     if (now - lastSweepAt >= safeWindowMs) {
       for (const [bucketKey, bucket] of buckets.entries()) {
@@ -72,8 +130,6 @@ function createRateLimiter({ windowMs, max, name }) {
       lastSweepAt = now;
     }
 
-    const ip = req.ip || req.socket?.remoteAddress || "unknown";
-    const key = `${safeName}:${ip}`;
     const current = buckets.get(key);
 
     if (!current || current.resetAt <= now) {

@@ -24,6 +24,9 @@ function errorHandler(err, req, res, next) {
   ) {
     status = 401;
     message = "Token không hợp lệ hoặc đã hết hạn";
+  } else if (safeError.message === "CORS blocked") {
+    status = 403;
+    message = "Origin không được phép truy cập API";
   }
 
   if (status >= 500) {

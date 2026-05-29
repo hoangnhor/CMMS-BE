@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const { httpError } = require("../utils/httpError");
 const {
   assertAllowedFields,
@@ -129,14 +130,23 @@ async function completeWorkOrder(id, payload, actor) {
   }
   assertAssignedTechnician(wo, actor, "Technician chỉ được hoàn thành WO đã được phân công cho mình");
 
-  wo.status = "done";
-  wo.completedAt = new Date();
   const laborHours = normalizeNumber(payload.laborHours || 0, "Giờ công", { min: 0 });
-  wo.laborHours = laborHours;
-  await wo.save();
+  const spareParts = normalizeSpareParts(payload.spareParts);
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      wo.$session(session);
+      wo.status = "done";
+      wo.completedAt = new Date();
+      wo.laborHours = laborHours;
+      await wo.save({ session });
 
-  await upsertCompletionLog(wo, actor._id, payload, laborHours);
-  await syncSparePartsUsed(wo._id, normalizeSpareParts(payload.spareParts));
+      await upsertCompletionLog(wo, actor._id, payload, laborHours, { session });
+      await syncSparePartsUsed(wo._id, spareParts, { session });
+    });
+  } finally {
+    await session.endSession();
+  }
 
   return wo.toObject();
 }

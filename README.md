@@ -1,62 +1,50 @@
-# Asset Management Backend API (CMMS)
+# CMMS Backend API (Asset Management)
 
-![Node.js](https://img.shields.io/badge/Node.js-Backend-339933?logo=nodedotjs&logoColor=white)
-![Express](https://img.shields.io/badge/Express-5-000000?logo=express&logoColor=white)
-![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?logo=mongodb&logoColor=white)
-![JWT](https://img.shields.io/badge/Auth-JWT-000000?logo=jsonwebtokens&logoColor=white)
-![Socket.IO](https://img.shields.io/badge/Realtime-Socket.IO-010101?logo=socketdotio&logoColor=white)
-![node-cron](https://img.shields.io/badge/Automation-node--cron-0F172A)
+Backend cho hệ thống CMMS với workflow Work Order, PM automation và bảo mật cookie-based auth.
 
-> Backend CMMS theo hướng operations-first: workflow WO chặt chẽ, bảo mật đa lớp và tự động hóa PM để giảm downtime.
+- Health: `https://cmms-be.onrender.com/api/health`
+- BE Repo: `https://github.com/hoangnhor/CMMS-BE`
+- FE Repo: `https://github.com/hoangnhor/CMMS-FE`
 
-- Live API: `https://cmms-be.onrender.com/api/health`
-- Related Repositories: `https://github.com/hoangnhor/CMMS-BE` | `https://github.com/hoangnhor/CMMS-FE`
+## Tech Stack (Core)
 
-## 🔥 Technical Highlights
+- Node.js
+- Express.js
+- MongoDB
+- Socket.IO
+- JWT
+- node-cron
 
-1. RBAC + security hardening (JWT, role middleware, rate limit, payload guard, security headers).
-2. Layered architecture: routes -> controllers -> services -> models.
-3. Work Order lifecycle theo role/state.
-4. PM automation với node-cron + realtime events.
+## Main Features
 
-## 🗄️ Database Design
+- Auth bằng access/refresh token qua httpOnly cookie
+- RBAC theo 4 vai trò: admin, site_manager, technician, accountant
+- Work Order lifecycle theo trạng thái
+- Preventive Maintenance tự động bằng cron
+- Dashboard realtime events qua Socket.IO
+- Rate limiting (global + auth scope)
+- Payload validation/sanitization
+- CSRF protection cho các request thay đổi dữ liệu
 
-| Collection | Mục đích |
-|---|---|
-| `users` | account + roles |
-| `assets` | master asset |
-| `machine_details` | machine telemetry |
-| `mold_details` | mold shot lifecycle |
-| `jig_details` | usage/calibration |
-| `infra_details` | infrastructure inspection |
-| `pm_schedules` | PM trigger rules |
-| `work_orders` | WO lifecycle records |
-| `maintenance_logs` | WO completion logs |
-| `spare_part_used` | spare parts consumption |
-
-## 🔄 Core Flow
-
-```text
-Auth Login -> JWT Verify -> RBAC
-Cron Tick -> Evaluate PM Due -> Create PM Work Order
-WO: draft -> pending_approval -> approved/rejected -> in_progress -> done -> sign-off
-```
-
-## 🚀 Local Setup
+## Local Setup
 
 ```bash
 npm install
 npm run dev
 ```
 
-### `.env` (required)
+## Environment
+
+Tạo file `.env` (tham chiếu `.env.example`):
 
 ```env
 NODE_ENV=development
 PORT=5000
 MONGO_URI=mongodb://localhost:27017/asset_management
-JWT_SECRET=replace_with_32_plus_chars_secret
+JWT_SECRET=replace_with_a_strong_32_plus_chars_secret
 JWT_EXPIRES_IN=7d
+REFRESH_JWT_SECRET=replace_with_a_different_strong_32_plus_chars_secret
+REFRESH_JWT_EXPIRES_IN=30d
 FRONTEND_ORIGIN=http://localhost:5173
 PM_CHECK_CRON=0 6 * * *
 SYSTEM_USER_ID=
@@ -67,68 +55,57 @@ RATE_LIMIT_MAX=600
 AUTH_RATE_LIMIT_WINDOW_MS=60000
 AUTH_RATE_LIMIT_MAX=20
 SHUTDOWN_TIMEOUT_MS=10000
+REDIS_URL=
+REDIS_PREFIX=am:rl
+SYNC_INDEXES_ON_BOOT=false
+AUTO_FIX_PM_WO_DUPLICATES=false
 ```
 
-### Env Validation Rules
-
-- `MONGO_URI` phải bắt đầu bằng `mongodb://` hoặc `mongodb+srv://`.
-- `JWT_SECRET` bắt buộc; production tối thiểu 32 ký tự.
-- `FRONTEND_ORIGIN` production không được `*`.
-- `PORT`, `RATE_LIMIT_*`, `AUTH_RATE_LIMIT_*`, `SHUTDOWN_TIMEOUT_MS` phải là số nguyên dương.
-
-## 🔌 API Usage Notes
+## API Notes
 
 - Base URL local: `http://localhost:5000/api`
-- Auth: `Authorization: Bearer <token>`
-- Response chuẩn: `{ success, data|message, requestId? }`
-- List endpoints hỗ trợ `paginated=true&page=1&limit=20` (ở các endpoint đã bật).
+- Health: `GET /api/health`
+- Ready: `GET /api/ready`
+- Auth cookies:
+  - `am_at` (access token)
+  - `am_rt` (refresh token)
+  - `am_csrf` (csrf token cookie for frontend header)
+- Response format:
+  - success: `{ success: true, data }`
+  - error: `{ success: false, message, requestId }`
 
-## ❤️ Health / Readiness
+## Security Notes
 
-- Health check: `GET /api/health`
-- Readiness check (DB state): `GET /api/ready`
+- JWT cookie-based auth (`httpOnly`, `sameSite=lax`)
+- CSRF check cho method `POST/PUT/PATCH/DELETE` khi có auth cookie
+- CORS allowlist theo `FRONTEND_ORIGIN`
+- Security headers + requestId + centralized error handler
 
-## 🧪 Seed / Demo Notes
+## Scripts
 
-- Seed command: `npm run seed`
-- Dữ liệu seed tạo user/asset/work orders mẫu để demo UI và workflow.
-- Không dùng tài khoản seed mặc định trên production.
+```bash
+npm run dev
+npm run start
+npm run lint
+npm run test
+npm run seed
+npm run check:pm-wo-duplicates
+npm run migrate:pm-wo-duplicates
+```
 
-## 🛡️ Security Checklist
+## Testing
 
-- [ ] `NODE_ENV=production`
-- [ ] `JWT_SECRET` >= 32 ký tự, rotate theo chu kỳ
-- [ ] `FRONTEND_ORIGIN` set domain cụ thể
-- [ ] Không commit `.env`
-- [ ] Bật HTTPS ở reverse proxy/platform
-- [ ] Kiểm tra rate limit theo tải thực tế
-- [ ] Theo dõi log lỗi 5xx theo `requestId`
+- Unit/integration tests chạy bằng Node test runner
+- Trạng thái gần nhất: `19/19 pass`
 
-## 🚢 Deployment Notes
+## Deploy Checklist
 
-- Platform phù hợp: Render / Railway / VPS.
-- Cần set đầy đủ env như trên.
-- Bật `TRUST_PROXY=true` khi chạy sau reverse proxy.
-- Kiểm tra sau deploy:
-  1. `GET /api/health` trả `success: true`
-  2. `GET /api/ready` trả HTTP `200`
-  3. Login và gọi API protected thành công
+1. Set đủ env production (đặc biệt `JWT_SECRET`, `REFRESH_JWT_SECRET`, `FRONTEND_ORIGIN`)
+2. Không để `FRONTEND_ORIGIN=*` trên production
+3. Tắt `SYNC_INDEXES_ON_BOOT` và `AUTO_FIX_PM_WO_DUPLICATES` trên production runtime
+4. Verify `GET /api/health` và `GET /api/ready`
 
-## 📝 Logging Consistency
-
-- HTTP logs qua `morgan`, có `requestId`.
-- Error response luôn kèm `requestId` để trace.
-- Lỗi 5xx được log server-side, không trả stack trace cho client production.
-
-## ✅ Final Release Checklist
-
-1. `npm run test` pass.
-2. DB indexes đã apply.
-3. Env production đã kiểm tra và secrets rotate.
-4. Health/ready endpoint pass sau deploy.
-5. Frontend domain đã whitelisted qua `FRONTEND_ORIGIN`.
-
-## 📂 Source Structure
+## Project Structure
 
 ```text
 src/

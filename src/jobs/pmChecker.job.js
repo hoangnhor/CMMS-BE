@@ -21,7 +21,12 @@ function startPmCheckerJob(cronExpr, systemUserId = null) {
             systemUserId
           );
         } catch (error) {
-          // Ignore duplicate/concurrent creation issues for the same schedule tick.
+          // Keep job running but log enough context for debugging.
+          console.warn("[pmChecker.job] bo qua tao WO", {
+            scheduleId: String(schedule._id),
+            assetId: String(asset._id),
+            message: error?.message || "unknown_error",
+          });
         }
       }
     } catch (error) {

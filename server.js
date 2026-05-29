@@ -18,6 +18,8 @@ const {
 const { startPmCheckerJob } = require("./src/jobs/pmChecker.job");
 const { setIo } = require("./src/realtime/io");
 const User = require("./src/models/User");
+const { ACCESS_TOKEN_COOKIE, parseCookieHeader } = require("./src/utils/cookies");
+const { issueCsrfCookie, requireCsrfToken } = require("./src/middleware/csrf");
 
 const authRoutes = require("./src/routes/auth.routes");
 const userRoutes = require("./src/routes/user.routes");
@@ -29,6 +31,7 @@ const maintenanceLogRoutes = require("./src/routes/maintenanceLog.routes");
 function buildCorsOrigin(originConfig) {
   if (originConfig === "*") return true;
   if (Array.isArray(originConfig)) {
+    const normalizeOrigin = (value) => String(value || "").trim().replace(/\/+$/, "").toLowerCase();
     const rules = originConfig.map((item) => {
       const value = String(item || "").trim();
       if (!value.includes("*")) return value;
@@ -41,8 +44,11 @@ function buildCorsOrigin(originConfig) {
         callback(null, true);
         return;
       }
+      const normalizedOrigin = normalizeOrigin(origin);
       const allowed = rules.some((rule) =>
-        typeof rule === "string" ? rule === origin : rule.test(origin)
+        typeof rule === "string"
+          ? normalizeOrigin(rule) === normalizedOrigin
+          : rule.test(origin)
       );
       if (allowed) {
         callback(null, true);
@@ -56,12 +62,17 @@ function buildCorsOrigin(originConfig) {
 
 async function authenticateSocket(env, socket, next) {
   try {
-    const token = socket.handshake?.auth?.token;
+    const bearerToken = socket.handshake?.auth?.token;
+    const cookieToken = parseCookieHeader(socket.handshake?.headers?.cookie || "")[ACCESS_TOKEN_COOKIE];
+    const token = bearerToken || cookieToken;
     if (!token) return next(new Error("Unauthorized"));
 
     const decoded = jwt.verify(token, env.jwtSecret);
     const user = await User.findById(decoded.sub).select("-passwordHash").lean();
     if (!user || !user.isActive) return next(new Error("Unauthorized"));
+    if (Number(decoded.tv || 0) !== Number(user.tokenVersion || 0)) {
+      return next(new Error("Unauthorized"));
+    }
 
     socket.user = user;
     return next();
@@ -72,7 +83,10 @@ async function authenticateSocket(env, socket, next) {
 
 async function bootstrap() {
   const env = getEnv();
-  await connectDb(env.mongoUri);
+  await connectDb(env.mongoUri, {
+    shouldSyncIndexesOnBoot: env.shouldSyncIndexesOnBoot,
+    autoFixPmWoDuplicates: false,
+  });
 
   const app = express();
   const corsOrigin = buildCorsOrigin(env.frontendOrigin);
@@ -80,19 +94,37 @@ async function bootstrap() {
   if (env.trustProxy) app.set("trust proxy", 1);
 
   morgan.token("id", (req) => req.id || "-");
+  morgan.token("uid", (req) => String(req.user?._id || "-"));
 
   app.use(requestId);
   app.use(securityHeaders(env));
-  app.use(cors({ origin: corsOrigin, credentials: false }));
+  app.use(cors({ origin: corsOrigin, credentials: true }));
+  app.use((req, res, next) => issueCsrfCookie(env, req, res, next));
+  app.use(requireCsrfToken);
   app.use(createRateLimiter({
     windowMs: env.globalRateLimitWindowMs,
     max: env.globalRateLimitMax,
     name: "global",
+    redisUrl: env.redisUrl,
+    redisPrefix: env.redisPrefix,
   }));
   app.use(requireJsonContent);
   app.use(express.json({ limit: env.jsonLimit }));
   app.use(blockUnsafePayload);
-  app.use(morgan(env.nodeEnv === "production" ? ":id :remote-addr :method :url :status :response-time ms" : "dev"));
+  app.use(
+    morgan((tokens, req, res) =>
+      JSON.stringify({
+        requestId: tokens.id(req, res),
+        method: tokens.method(req, res),
+        path: tokens.url(req, res),
+        status: Number(tokens.status(req, res) || 0),
+        durationMs: Number(tokens["response-time"](req, res) || 0),
+        ip: tokens["remote-addr"](req, res),
+        userAgent: tokens["user-agent"](req, res),
+        userId: tokens.uid(req, res),
+      })
+    )
+  );
 
   app.get("/api/health", (_req, res) => {
     res.json({ success: true, message: "OK" });
@@ -110,6 +142,8 @@ async function bootstrap() {
     windowMs: env.authRateLimitWindowMs,
     max: env.authRateLimitMax,
     name: "auth",
+    redisUrl: env.redisUrl,
+    redisPrefix: env.redisPrefix,
   }));
   app.use("/api/auth", authRoutes);
   app.use("/api/users", userRoutes);

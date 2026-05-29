@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const { getEnv } = require("../config/env");
+const { ACCESS_TOKEN_COOKIE, parseCookieHeader } = require("../utils/cookies");
 
 const env = getEnv();
 
@@ -14,7 +15,9 @@ async function auth(req, res, next) {
 
   try {
     const authHeader = req.headers.authorization || "";
-    const token = authHeader.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
+    const bearerToken = authHeader.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
+    const cookieToken = parseCookieHeader(req.headers.cookie || "")[ACCESS_TOKEN_COOKIE] || null;
+    const token = bearerToken || cookieToken;
 
     if (!token) {
       return unauthorized("Thiếu token");
@@ -34,6 +37,9 @@ async function auth(req, res, next) {
 
     if (!user || !user.isActive) {
       return unauthorized("Token không hợp lệ hoặc tài khoản đã bị khóa");
+    }
+    if (Number(decoded.tv || 0) !== Number(user.tokenVersion || 0)) {
+      return unauthorized("Phiên đăng nhập đã hết hiệu lực");
     }
 
     req.user = user;

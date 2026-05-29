@@ -7,6 +7,8 @@
     "start": "node server.js",
     "dev": "node server.js",
     "seed": "node seed.js",
+    "check:pm-wo-duplicates": "node scripts/checkPmWorkOrderDuplicates.js",
+    "migrate:pm-wo-duplicates": "node scripts/fixPmWorkOrderDuplicates.js",
     "test": "node --test --test-isolation=none",
     "lint": "eslint ."
   },
@@ -23,6 +25,7 @@
     "mongoose": "^9.4.1",
     "morgan": "^1.10.1",
     "node-cron": "^4.2.1",
+    "redis": "^5.12.1",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

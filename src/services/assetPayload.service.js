@@ -10,6 +10,7 @@ const {
   requireEnum,
   requireString,
 } = require("../utils/validators");
+const { httpError } = require("../utils/httpError");
 
 const assetTypes = ["machine", "mold", "jig_tool", "infrastructure"];
 const assetStatuses = ["active", "in_repair", "idle", "disposed"];
@@ -101,10 +102,37 @@ function normalizeAssetPayload(payload, { create = false, currentType = null } =
 }
 
 function buildAssetFilter(query = {}) {
-  const { assetType, status, keyword } = query;
+  const { assetType, status, keyword, manufacturer, location, minPrice, maxPrice } = query;
   const filter = {};
   if (assetType) filter.assetType = requireEnum(assetType, assetTypes, "Loại tài sản");
   if (status) filter.status = requireEnum(status, assetStatuses, "Trạng thái tài sản");
+  if (manufacturer) {
+    const safeManufacturer = escapeRegex(String(manufacturer).trim().slice(0, MAX_KEYWORD_LENGTH));
+    if (safeManufacturer) {
+      filter.manufacturer = { $regex: safeManufacturer, $options: "i" };
+    }
+  }
+  if (location) {
+    const safeLocation = escapeRegex(String(location).trim().slice(0, MAX_KEYWORD_LENGTH));
+    if (safeLocation) {
+      filter.location = { $regex: safeLocation, $options: "i" };
+    }
+  }
+
+  const numericRange = {};
+  if (minPrice !== undefined && minPrice !== null && String(minPrice).trim() !== "") {
+    numericRange.$gte = normalizeNumber(minPrice, "Giá trị tối thiểu", { min: 0 });
+  }
+  if (maxPrice !== undefined && maxPrice !== null && String(maxPrice).trim() !== "") {
+    numericRange.$lte = normalizeNumber(maxPrice, "Giá trị tối đa", { min: 0 });
+  }
+  if (numericRange.$gte !== undefined && numericRange.$lte !== undefined && numericRange.$gte > numericRange.$lte) {
+    throw httpError(400, "Giá trị lọc không hợp lệ: minPrice lớn hơn maxPrice");
+  }
+  if (Object.keys(numericRange).length > 0) {
+    filter.purchasePrice = numericRange;
+  }
+
   if (keyword) {
     const safeKeyword = escapeRegex(String(keyword).trim().slice(0, MAX_KEYWORD_LENGTH));
     if (!safeKeyword) return filter;
