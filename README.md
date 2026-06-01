@@ -1,41 +1,40 @@
-# CMMS Backend API (Asset Management)
+# CMMS Backend API
 
-Backend cho hệ thống CMMS với workflow Work Order, PM automation và bảo mật cookie-based auth.
+Backend API cho hệ thống CMMS (Asset & Maintenance Management).
 
-- Health: `https://cmms-be.onrender.com/api/health`
-- BE Repo: `https://github.com/hoangnhor/CMMS-BE`
-- FE Repo: `https://github.com/hoangnhor/CMMS-FE`
+- Backend repo: `https://github.com/hoangnhor/CMMS-BE`
+- Frontend repo: `https://github.com/hoangnhor/CMMS-FE`
 
-## Tech Stack (Core)
+## Stack
 
-- Node.js
-- Express.js
-- MongoDB
+- Node.js + Express 5
+- MongoDB + Mongoose
 - Socket.IO
-- JWT
+- JWT (cookie-based auth)
 - node-cron
+- Redis (optional cho rate limit phân tán)
 
-## Main Features
+## Module chính
 
-- Auth bằng access/refresh token qua httpOnly cookie
-- RBAC theo 4 vai trò: admin, site_manager, technician, accountant
-- Work Order lifecycle theo trạng thái
-- Preventive Maintenance tự động bằng cron
-- Dashboard realtime events qua Socket.IO
-- Rate limiting (global + auth scope)
-- Payload validation/sanitization
-- CSRF protection cho các request thay đổi dữ liệu
+- Authentication
+- Dashboard
+- Asset Management
+- Work Order Management
+- Preventive Maintenance
+- User Administration
 
-## Local Setup
+## Chạy local
 
 ```bash
 npm install
 npm run dev
 ```
 
-## Environment
+Mặc định API chạy tại `http://localhost:5000`.
 
-Tạo file `.env` (tham chiếu `.env.example`):
+## Biến môi trường
+
+Tạo `.env` từ `.env.example`:
 
 ```env
 NODE_ENV=development
@@ -61,25 +60,33 @@ SYNC_INDEXES_ON_BOOT=false
 AUTO_FIX_PM_WO_DUPLICATES=false
 ```
 
-## API Notes
+## API nhanh
 
-- Base URL local: `http://localhost:5000/api`
-- Health: `GET /api/health`
-- Ready: `GET /api/ready`
-- Auth cookies:
-  - `am_at` (access token)
-  - `am_rt` (refresh token)
-  - `am_csrf` (csrf token cookie for frontend header)
-- Response format:
-  - success: `{ success: true, data }`
-  - error: `{ success: false, message, requestId }`
+- Base URL: `http://localhost:5000/api`
+- Health check: `GET /api/health`
+- Readiness: `GET /api/ready`
 
-## Security Notes
+Chuẩn response:
+- Success: `{ success: true, data }`
+- Error: `{ success: false, message, requestId }`
 
-- JWT cookie-based auth (`httpOnly`, `sameSite=lax`)
-- CSRF check cho method `POST/PUT/PATCH/DELETE` khi có auth cookie
-- CORS allowlist theo `FRONTEND_ORIGIN`
-- Security headers + requestId + centralized error handler
+## Auth, RBAC, Security
+
+- Auth dùng cookie:
+  - `am_at` (access token, httpOnly)
+  - `am_rt` (refresh token, httpOnly)
+  - `am_csrf` (CSRF token cookie cho frontend)
+- RBAC 4 vai trò: `admin`, `site_manager`, `technician`, `accountant`.
+- CSRF bảo vệ cho method `POST/PUT/PATCH/DELETE` khi request có auth cookie.
+- CORS allowlist theo `FRONTEND_ORIGIN`.
+- Global/auth rate limiting (Redis nếu có, fallback memory).
+- Security headers, request id, centralized error handler.
+
+## Work Order & PM highlights
+
+- Work Order lifecycle: `draft -> pending_approval -> approved -> in_progress -> done/rejected`.
+- Transaction khi complete Work Order (update WO + maintenance log + spare parts).
+- PM checker chạy theo cron và có cơ chế tránh tạo trùng PM Work Order (idempotency).
 
 ## Scripts
 
@@ -93,29 +100,24 @@ npm run check:pm-wo-duplicates
 npm run migrate:pm-wo-duplicates
 ```
 
-## Testing
+## Deploy checklist
 
-- Unit/integration tests chạy bằng Node test runner
-- Trạng thái gần nhất: `19/19 pass`
+1. Set đầy đủ env production, đặc biệt: `MONGO_URI`, `JWT_SECRET`, `REFRESH_JWT_SECRET`, `FRONTEND_ORIGIN`.
+2. Không dùng `FRONTEND_ORIGIN=*` trong production.
+3. Giữ `SYNC_INDEXES_ON_BOOT=false` và `AUTO_FIX_PM_WO_DUPLICATES=false` khi runtime production.
+4. Verify `GET /api/health` và `GET /api/ready` sau deploy.
 
-## Deploy Checklist
-
-1. Set đủ env production (đặc biệt `JWT_SECRET`, `REFRESH_JWT_SECRET`, `FRONTEND_ORIGIN`)
-2. Không để `FRONTEND_ORIGIN=*` trên production
-3. Tắt `SYNC_INDEXES_ON_BOOT` và `AUTO_FIX_PM_WO_DUPLICATES` trên production runtime
-4. Verify `GET /api/health` và `GET /api/ready`
-
-## Project Structure
+## Cấu trúc chính
 
 ```text
 src/
-├─ config/
-├─ controllers/
-├─ jobs/
-├─ middleware/
-├─ models/
-├─ realtime/
-├─ routes/
-├─ services/
-└─ utils/
+  config/
+  controllers/
+  jobs/
+  middleware/
+  models/
+  realtime/
+  routes/
+  services/
+  utils/
 ```
