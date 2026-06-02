@@ -11,19 +11,22 @@ const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 const CSRF_IGNORED_PATHS = new Set(["/api/auth/login"]);
 
 function buildCsrfCookieOptions(env) {
+  const isProd = env.nodeEnv === "production";
   return {
     httpOnly: false,
-    secure: env.nodeEnv === "production",
-    sameSite: "lax",
+    secure: isProd,
+    sameSite: isProd ? "none" : "lax",
     path: "/",
   };
 }
 
 function issueCsrfCookie(env, req, res, next) {
   const cookies = parseCookieHeader(req.headers.cookie || "");
+  const csrfToken = cookies[CSRF_COOKIE] || crypto.randomBytes(24).toString("base64url");
   if (!cookies[CSRF_COOKIE]) {
-    res.cookie(CSRF_COOKIE, crypto.randomBytes(24).toString("base64url"), buildCsrfCookieOptions(env));
+    res.cookie(CSRF_COOKIE, csrfToken, buildCsrfCookieOptions(env));
   }
+  res.locals.csrfToken = csrfToken;
   next();
 }
 

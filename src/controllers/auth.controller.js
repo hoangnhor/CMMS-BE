@@ -40,6 +40,19 @@ function clearAuthCookies(res) {
   res.clearCookie(REFRESH_TOKEN_COOKIE, cookieOptions);
 }
 
+function buildAuthResponse(user, csrfToken) {
+  return {
+    user: {
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      isActive: user.isActive,
+    },
+    csrfToken,
+  };
+}
+
 async function verifyRefreshUserOrThrow(req) {
   const cookies = parseCookieHeader(req.headers.cookie || "");
   const refreshToken = cookies[REFRESH_TOKEN_COOKIE] || null;
@@ -81,15 +94,7 @@ async function login(req, res, next) {
 
     return res.json({
       success: true,
-      data: {
-        user: {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          isActive: user.isActive,
-        },
-      },
+      data: buildAuthResponse(user, res.locals.csrfToken || null),
     });
   } catch (error) {
     return next(error);
@@ -98,7 +103,13 @@ async function login(req, res, next) {
 
 async function me(req, res) {
   const { _id, name, email, role, isActive } = req.user;
-  return res.json({ success: true, data: { _id, name, email, role, isActive } });
+  return res.json({
+    success: true,
+    data: {
+      user: { _id, name, email, role, isActive },
+      csrfToken: res.locals.csrfToken || null,
+    },
+  });
 }
 
 async function refresh(req, res) {
@@ -111,8 +122,10 @@ async function refresh(req, res) {
   const token = signToken(user);
   const refreshToken = signRefreshToken(user);
   setAuthCookies(res, token, refreshToken);
-  const { _id, name, email, role, isActive } = user;
-  return res.json({ success: true, data: { user: { _id, name, email, role, isActive } } });
+  return res.json({
+    success: true,
+    data: buildAuthResponse(user, res.locals.csrfToken || null),
+  });
 }
 
 async function logout(req, res) {
