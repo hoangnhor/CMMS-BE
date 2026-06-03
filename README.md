@@ -34,7 +34,7 @@ Mặc định API chạy tại `http://localhost:5000`.
 
 ## Biến môi trường
 
-Tạo `.env` từ `.env.example`:
+Tạo `.env` local:
 
 ```env
 NODE_ENV=development
