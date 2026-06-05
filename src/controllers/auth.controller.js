@@ -94,7 +94,7 @@ async function login(req, res, next) {
 
     return res.json({
       success: true,
-      data: buildAuthResponse(user, res.locals.csrfToken || null),
+      data: buildAuthResponse(user, res.locals?.csrfToken || null),
     });
   } catch (error) {
     return next(error);
@@ -107,7 +107,7 @@ async function me(req, res) {
     success: true,
     data: {
       user: { _id, name, email, role, isActive },
-      csrfToken: res.locals.csrfToken || null,
+      csrfToken: res.locals?.csrfToken || null,
     },
   });
 }
@@ -124,7 +124,7 @@ async function refresh(req, res) {
   setAuthCookies(res, token, refreshToken);
   return res.json({
     success: true,
-    data: buildAuthResponse(user, res.locals.csrfToken || null),
+    data: buildAuthResponse(user, res.locals?.csrfToken || null),
   });
 }
 

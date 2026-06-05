@@ -1,5 +1,6 @@
 const WorkOrder = require("../models/WorkOrder");
 const PmSchedule = require("../models/PmSchedule");
+const mongoose = require("mongoose");
 const { generateWoCode } = require("../utils/generateWoCode");
 const { getCurrentTriggerValue, isDue } = require("./pmEngine.service");
 const { httpError } = require("../utils/httpError");
@@ -45,54 +46,70 @@ async function createWorkOrder(payload, actor) {
 }
 
 async function createWorkOrderFromPmSchedule(scheduleId, actorId = null) {
-  const schedule = await PmSchedule.findById(scheduleId).populate("assetId");
-  if (!schedule) throw httpError(404, "Không tìm thấy lịch PM");
-  if (!schedule.isActive) throw httpError(400, "Lịch PM đang ở trạng thái inactive");
-
-  const currentValue = await getCurrentTriggerValue(schedule, schedule.assetId.assetType);
-  if (!isDue(schedule, currentValue)) {
-    throw httpError(400, "Lịch PM chưa đến ngưỡng sinh Work Order.");
-  }
-
-  const creatorId = await resolvePmCreatorId(actorId);
-
-  const existed = await WorkOrder.findOne({
-    pmScheduleId: schedule._id,
-    pmTriggeredValue: currentValue,
-  }).lean();
-  if (existed) {
-    return existed;
-  }
-
-  let wo;
+  const session = await mongoose.startSession();
+  let currentValueForDuplicate = null;
   try {
-    wo = await WorkOrder.create({
-      woCode: await generateWoCode("WO"),
-      woType: "PM",
-      triggerSource: "pm_schedule",
-      priority: "medium",
-      assetId: schedule.assetId._id,
-      createdBy: creatorId,
-      status: "draft",
-      pmScheduleId: schedule._id,
-      pmTriggeredValue: currentValue,
+    let result = null;
+    await session.withTransaction(async () => {
+      const schedule = await PmSchedule.findById(scheduleId).populate("assetId").session(session);
+      if (!schedule) throw httpError(404, "Không tìm thấy lịch PM");
+      if (!schedule.isActive) throw httpError(400, "Lịch PM đang ở trạng thái inactive");
+      if (!schedule.assetId) throw httpError(404, "Không tìm thấy tài sản cho lịch PM");
+      if (schedule.assetId.status === "disposed") {
+        throw httpError(400, "Tài sản đã thanh lý, không thể sinh Work Order PM");
+      }
+
+      const currentValue = await getCurrentTriggerValue(schedule, schedule.assetId.assetType);
+      currentValueForDuplicate = currentValue;
+      if (!isDue(schedule, currentValue)) {
+        throw httpError(400, "Lịch PM chưa đến ngưỡng sinh Work Order.");
+      }
+
+      const creatorId = await resolvePmCreatorId(actorId);
+
+      const existed = await WorkOrder.findOne({
+        pmScheduleId: schedule._id,
+        pmTriggeredValue: currentValue,
+      }).session(session).lean();
+      if (existed) {
+        result = existed;
+        return;
+      }
+
+      const [wo] = await WorkOrder.create(
+        [{
+          woCode: await generateWoCode("WO"),
+          woType: "PM",
+          triggerSource: "pm_schedule",
+          priority: "medium",
+          assetId: schedule.assetId._id,
+          createdBy: creatorId,
+          status: "draft",
+          pmScheduleId: schedule._id,
+          pmTriggeredValue: currentValue,
+        }],
+        { session }
+      );
+
+      schedule.lastTriggeredValue = currentValue;
+      schedule.nextDueValue = currentValue + schedule.intervalValue;
+      await schedule.save({ session });
+
+      result = wo.toObject();
     });
+    return result;
   } catch (error) {
     if (error?.code === 11000) {
       const duplicate = await WorkOrder.findOne({
-        pmScheduleId: schedule._id,
-        pmTriggeredValue: currentValue,
+        pmScheduleId: scheduleId,
+        pmTriggeredValue: currentValueForDuplicate,
       }).lean();
       if (duplicate) return duplicate;
     }
     throw error;
+  } finally {
+    await session.endSession();
   }
-
-  schedule.lastTriggeredValue = currentValue;
-  schedule.nextDueValue = currentValue + schedule.intervalValue;
-  await schedule.save();
-
-  return wo.toObject();
 }
 
 module.exports = {

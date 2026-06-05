@@ -45,3 +45,21 @@ test("rate limiter blocks requests exceeding max in memory fallback", async () =
   assert.equal(res.body.success, false);
   assert.ok(Number(res.headers["Retry-After"]) >= 1);
 });
+
+test("rate limiter fails closed in production when redis is unavailable", async () => {
+  const limiter = createRateLimiter({
+    windowMs: 5000,
+    max: 2,
+    name: "test",
+    redisUrl: null,
+    nodeEnv: "production",
+  });
+  const { req, res } = makeReqRes("req-rate-prod");
+
+  await limiter(req, res, () => {});
+
+  assert.equal(res.statusCode, 503);
+  assert.equal(res.body.success, false);
+  assert.match(res.body.message, /Rate limit tạm thời không khả dụng/);
+  assert.equal(res.body.requestId, "req-rate-prod");
+});

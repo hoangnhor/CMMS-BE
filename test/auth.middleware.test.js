@@ -13,7 +13,7 @@ function makeReqRes(token) {
   const req = {
     id: "req-1",
     headers: {
-      authorization: token ? `Bearer ${token}` : "",
+      cookie: token ? `am_at=${token}` : "",
     },
   };
   const res = {
@@ -31,7 +31,7 @@ function makeReqRes(token) {
   return { req, res };
 }
 
-test("auth middleware accepts token with matching tokenVersion", async () => {
+test("auth middleware accepts token with matching tokenVersion from cookie", async () => {
   const originalFindById = User.findById;
   User.findById = () => ({
     select: () => ({
@@ -62,7 +62,7 @@ test("auth middleware accepts token with matching tokenVersion", async () => {
   User.findById = originalFindById;
 });
 
-test("auth middleware rejects token when tokenVersion mismatches", async () => {
+test("auth middleware rejects token when tokenVersion mismatches from cookie", async () => {
   const originalFindById = User.findById;
   User.findById = () => ({
     select: () => ({

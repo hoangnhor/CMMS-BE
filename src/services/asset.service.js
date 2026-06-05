@@ -1,4 +1,8 @@
+const mongoose = require("mongoose");
 const Asset = require("../models/Asset");
+const WorkOrder = require("../models/WorkOrder");
+const MaintenanceLog = require("../models/MaintenanceLog");
+const PmSchedule = require("../models/PmSchedule");
 const { httpError } = require("../utils/httpError");
 const {
   normalizeAssetPayload,
@@ -9,8 +13,8 @@ const {
   findDetailByAsset,
   createAssetDetail,
   upsertAssetDetail,
+  getDetailModel,
 } = require("./assetDetail.service");
-const { hardDeleteAssetById } = require("./assetCascadeDelete.service");
 const { parsePagination } = require("../utils/pagination");
 
 async function findAssetOrThrow(id, { lean = false } = {}) {
@@ -22,19 +26,23 @@ async function findAssetOrThrow(id, { lean = false } = {}) {
 
 async function createAsset(payload) {
   const { assetData, detail } = normalizeAssetPayload(payload, { create: true });
-  const existed = await Asset.findOne({ assetCode: assetData.assetCode }).lean();
+  const session = await mongoose.startSession();
+  try {
+    let result = null;
+    await session.withTransaction(async () => {
+      const existed = await Asset.findOne({ assetCode: assetData.assetCode }).session(session).lean();
+      if (existed) {
+        throw httpError(409, "Mã tài sản đã tồn tại");
+      }
 
-  if (existed) {
-    if (existed.status === "disposed") {
-      await hardDeleteAssetById(existed);
-    } else {
-      throw httpError(409, "Mã tài sản đã tồn tại");
-    }
+      const [asset] = await Asset.create([assetData], { session });
+      const detailDoc = await createAssetDetail(asset, detail, { session });
+      result = { asset, detail: detailDoc };
+    });
+    return result;
+  } finally {
+    await session.endSession();
   }
-
-  const asset = await Asset.create(assetData);
-  const detailDoc = await createAssetDetail(asset, detail);
-  return { asset, detail: detailDoc };
 }
 
 async function listAssets(query = {}, actor = null) {
@@ -97,16 +105,45 @@ async function updateAsset(id, payload) {
     currentType: current.assetType,
   });
 
-  Object.assign(current, assetData);
-  const savedAsset = await current.save();
-  const detailDoc = await upsertAssetDetail(savedAsset, detail);
-  return { asset: savedAsset.toObject(), detail: detailDoc };
+  const session = await mongoose.startSession();
+  try {
+    let result = null;
+    await session.withTransaction(async () => {
+      current.$session(session);
+      Object.assign(current, assetData);
+      const savedAsset = await current.save({ session });
+      const detailDoc = await upsertAssetDetail(savedAsset, detail, { session });
+      result = { asset: savedAsset.toObject(), detail: detailDoc };
+    });
+    return result;
+  } finally {
+    await session.endSession();
+  }
 }
 
 async function deleteAsset(id) {
   const current = await findAssetOrThrow(id, { lean: true });
-  await hardDeleteAssetById(current);
-  return { id };
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
+      const [workOrderCount, maintenanceLogCount, pmScheduleCount] = await Promise.all([
+        WorkOrder.countDocuments({ assetId: current._id }).session(session),
+        MaintenanceLog.countDocuments({ assetId: current._id }).session(session),
+        PmSchedule.countDocuments({ assetId: current._id }).session(session),
+      ]);
+
+      if (workOrderCount > 0 || maintenanceLogCount > 0 || pmScheduleCount > 0) {
+        throw httpError(409, "Không thể xóa tài sản đã có lịch sử nghiệp vụ");
+      }
+
+      const AssetDetailModel = getDetailModel(current.assetType);
+      await AssetDetailModel.deleteOne({ assetId: current._id }).session(session);
+      await Asset.deleteOne({ _id: current._id }).session(session);
+    });
+    return { id };
+  } finally {
+    await session.endSession();
+  }
 }
 
 module.exports = {

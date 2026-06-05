@@ -14,10 +14,8 @@ async function auth(req, res, next) {
     });
 
   try {
-    const authHeader = req.headers.authorization || "";
-    const bearerToken = authHeader.match(/^Bearer\s+(.+)$/i)?.[1]?.trim() || null;
     const cookieToken = parseCookieHeader(req.headers.cookie || "")[ACCESS_TOKEN_COOKIE] || null;
-    const token = bearerToken || cookieToken;
+    const token = cookieToken;
 
     if (!token) {
       return unauthorized("Thiếu token");

@@ -1,5 +1,7 @@
 const bcrypt = require("bcryptjs");
 const User = require("../models/User");
+const WorkOrder = require("../models/WorkOrder");
+const MaintenanceLog = require("../models/MaintenanceLog");
 const { httpError } = require("../utils/httpError");
 const {
   assertAllowedFields,
@@ -78,6 +80,20 @@ async function updateUserStatus(id, payload, actorId) {
 async function deleteUser(id, actorId) {
   if (String(id) === String(actorId)) {
     throw httpError(400, "Không thể xóa chính tài khoản đang đăng nhập");
+  }
+
+  const [createdCount, assignedCount, approvedCount, technicianCount] = await Promise.all([
+    WorkOrder.countDocuments({ createdBy: id }),
+    WorkOrder.countDocuments({ assignedTo: id }),
+    WorkOrder.countDocuments({ approvedBy: id }),
+    MaintenanceLog.countDocuments({ technicianId: id }),
+  ]);
+
+  if (createdCount || assignedCount || approvedCount || technicianCount) {
+    throw httpError(
+      409,
+      "Không thể xóa người dùng đã có lịch sử nghiệp vụ. Hãy khóa tài khoản thay thế."
+    );
   }
 
   const user = await User.findByIdAndDelete(id).select("-passwordHash").lean();

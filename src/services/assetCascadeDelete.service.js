@@ -38,5 +38,6 @@ async function hardDeleteAssetById(assetDoc) {
 }
 
 module.exports = {
+  cascadeDeleteWithSession,
   hardDeleteAssetById,
 };

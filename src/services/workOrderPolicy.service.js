@@ -20,8 +20,11 @@ const WORK_ORDER_SIGNOFF_FIELDS = ["qcSignOff"];
 
 async function ensureAssetExists(assetId) {
   const resolvedAssetId = requireObjectId(assetId, "assetId");
-  const asset = await Asset.findById(resolvedAssetId).lean();
+  const asset = await Asset.findById(resolvedAssetId).select("status").lean();
   if (!asset) throw httpError(404, "Không tìm thấy tài sản");
+  if (asset.status === "disposed") {
+    throw httpError(400, "Tài sản đã thanh lý, không thể dùng để tạo Work Order");
+  }
   return resolvedAssetId;
 }
 

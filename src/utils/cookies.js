@@ -7,11 +7,19 @@ function parseCookieHeader(cookieHeader) {
   const source = String(cookieHeader || "");
   if (!source) return {};
 
+  const safeDecode = (value) => {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  };
+
   return source.split(";").reduce((acc, pair) => {
     const [rawKey, ...rawValue] = pair.trim().split("=");
     if (!rawKey) return acc;
-    const key = decodeURIComponent(rawKey.trim());
-    const value = decodeURIComponent(rawValue.join("=").trim());
+    const key = safeDecode(rawKey.trim());
+    const value = safeDecode(rawValue.join("=").trim());
     acc[key] = value;
     return acc;
   }, {});

@@ -5,6 +5,7 @@ process.env.REFRESH_JWT_SECRET =
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const mongoose = require("mongoose");
 const WorkOrder = require("../src/models/WorkOrder");
 const PmSchedule = require("../src/models/PmSchedule");
 const MachineDetail = require("../src/models/MachineDetail");
@@ -14,6 +15,7 @@ test("createWorkOrderFromPmSchedule returns existing WO when same schedule/value
   const originalFindById = PmSchedule.findById;
   const originalFindOne = WorkOrder.findOne;
   const originalMachineFindOne = MachineDetail.findOne;
+  const originalStartSession = mongoose.startSession;
 
   const scheduleDoc = {
     _id: "507f1f77bcf86cd799439012",
@@ -25,15 +27,23 @@ test("createWorkOrderFromPmSchedule returns existing WO when same schedule/value
   };
 
   PmSchedule.findById = () => ({
-    populate: async () => scheduleDoc,
+    populate: () => ({
+      session: async () => scheduleDoc,
+    }),
   });
 
   const existing = { _id: "wo-existing-1" };
   WorkOrder.findOne = () => ({
-    lean: async () => existing,
+    session: () => ({
+      lean: async () => existing,
+    }),
   });
   MachineDetail.findOne = () => ({
     lean: async () => ({ spindleHours: 0 }),
+  });
+  mongoose.startSession = async () => ({
+    withTransaction: async (fn) => fn(),
+    endSession: async () => {},
   });
 
   const result = await workOrderService.createWorkOrderFromPmSchedule(scheduleDoc._id, "507f1f77bcf86cd799439011");
@@ -42,4 +52,37 @@ test("createWorkOrderFromPmSchedule returns existing WO when same schedule/value
   PmSchedule.findById = originalFindById;
   WorkOrder.findOne = originalFindOne;
   MachineDetail.findOne = originalMachineFindOne;
+  mongoose.startSession = originalStartSession;
+});
+
+test("createWorkOrderFromPmSchedule rejects disposed asset", async () => {
+  const originalFindById = PmSchedule.findById;
+  const originalStartSession = mongoose.startSession;
+
+  const scheduleDoc = {
+    _id: "507f1f77bcf86cd799439012",
+    isActive: true,
+    intervalValue: 10,
+    triggerType: "hours",
+    nextDueValue: 0,
+    assetId: { _id: "507f1f77bcf86cd799439013", assetType: "machine", status: "disposed" },
+  };
+
+  PmSchedule.findById = () => ({
+    populate: () => ({
+      session: async () => scheduleDoc,
+    }),
+  });
+  mongoose.startSession = async () => ({
+    withTransaction: async (fn) => fn(),
+    endSession: async () => {},
+  });
+
+  await assert.rejects(
+    () => workOrderService.createWorkOrderFromPmSchedule(scheduleDoc._id, "507f1f77bcf86cd799439011"),
+    /thanh lý/
+  );
+
+  PmSchedule.findById = originalFindById;
+  mongoose.startSession = originalStartSession;
 });

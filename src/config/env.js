@@ -1,4 +1,5 @@
 const dotenv = require("dotenv");
+const mongoose = require("mongoose");
 
 dotenv.config({ override: true });
 
@@ -57,6 +58,15 @@ function parseAutoBoolean(value, fallback = false) {
   return raw === "true" || raw === "1" || raw === "yes";
 }
 
+function validateObjectId(value, label) {
+  const raw = sanitizeEnvValue(value);
+  if (!raw) return null;
+  if (!mongoose.Types.ObjectId.isValid(raw)) {
+    throw new Error(`${label} phải là Mongo ObjectId hợp lệ`);
+  }
+  return raw;
+}
+
 function getEnv() {
   const missing = requiredVars.filter((key) => !process.env[key]);
   if (missing.length) {
@@ -71,6 +81,7 @@ function getEnv() {
   );
   const refreshJwtExpiresIn = sanitizeEnvValue(process.env.REFRESH_JWT_EXPIRES_IN || "30d");
   const frontendOrigin = parseOrigins(process.env.FRONTEND_ORIGIN || "*");
+  const redisUrl = sanitizeEnvValue(process.env.REDIS_URL || "");
   if (!jwtExpiresIn) {
     throw new Error("JWT_EXPIRES_IN không hợp lệ");
   }
@@ -84,6 +95,9 @@ function getEnv() {
   if (process.env.NODE_ENV === "production") {
     if (frontendOrigin === "*") {
       throw new Error("FRONTEND_ORIGIN không được là * trong production");
+    }
+    if (!redisUrl) {
+      throw new Error("REDIS_URL là bắt buộc trong production để rate limit hoạt động an toàn");
     }
     if (jwtSecret.length < 32) {
       throw new Error("JWT_SECRET trong production phải có ít nhất 32 ký tự");
@@ -125,7 +139,6 @@ function getEnv() {
     10000,
     "SHUTDOWN_TIMEOUT_MS"
   );
-  const redisUrl = sanitizeEnvValue(process.env.REDIS_URL || "");
   const redisPrefix = sanitizeEnvValue(process.env.REDIS_PREFIX || "am:rl");
   const shouldSyncIndexesOnBoot = parseAutoBoolean(
     process.env.SYNC_INDEXES_ON_BOOT,
@@ -146,7 +159,7 @@ function getEnv() {
     refreshJwtExpiresIn,
     frontendOrigin,
     pmCron: process.env.PM_CHECK_CRON || "0 6 * * *",
-    systemUserId: process.env.SYSTEM_USER_ID || null,
+    systemUserId: validateObjectId(process.env.SYSTEM_USER_ID, "SYSTEM_USER_ID"),
     trustProxy: parseBoolean(process.env.TRUST_PROXY, false, "TRUST_PROXY"),
     jsonLimit: process.env.JSON_LIMIT || "1mb",
     globalRateLimitWindowMs,
@@ -161,4 +174,4 @@ function getEnv() {
   };
 }
 
-module.exports = { getEnv };
+module.exports = { getEnv, validateObjectId };

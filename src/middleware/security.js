@@ -82,12 +82,28 @@ async function getRedisClient(redisUrl) {
   return redisInit;
 }
 
-function createRateLimiter({ windowMs, max, name, redisUrl = null, redisPrefix = "am:rl" }) {
+function createRateLimiter({
+  windowMs,
+  max,
+  name,
+  redisUrl = null,
+  redisPrefix = "am:rl",
+  nodeEnv = "development",
+}) {
   const safeWindowMs = Number.isInteger(windowMs) && windowMs > 0 ? windowMs : 60000;
   const safeMax = Number.isInteger(max) && max > 0 ? max : 100;
   const safeName = name || "global";
+  const strictRedis = nodeEnv === "production";
   const buckets = new Map();
   let lastSweepAt = 0;
+
+  function sendRedisUnavailable(req, res) {
+    return res.status(503).json({
+      success: false,
+      message: "Rate limit tạm thời không khả dụng",
+      requestId: req.id,
+    });
+  }
 
   return async (req, res, next) => {
     const ip = req.ip || req.socket?.remoteAddress || "unknown";
@@ -118,7 +134,12 @@ function createRateLimiter({ windowMs, max, name, redisUrl = null, redisPrefix =
           redisWarned = true;
           console.warn("[rate-limit] Redis runtime error, fallback memory:", error?.message || error);
         }
+        if (strictRedis) {
+          return sendRedisUnavailable(req, res);
+        }
       }
+    } else if (strictRedis) {
+      return sendRedisUnavailable(req, res);
     }
 
     if (now - lastSweepAt >= safeWindowMs) {

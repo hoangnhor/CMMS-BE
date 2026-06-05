@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const WorkOrder = require("../models/WorkOrder");
 const { httpError } = require("../utils/httpError");
 const {
   assertAllowedFields,
@@ -108,16 +109,35 @@ async function startWorkOrder(id, actor) {
   assertTechnicianActor(actor, "Chỉ technician mới được bắt đầu WO");
   if (wo.status !== "approved") throw httpError(400, "WO phải được duyệt trước khi bắt đầu");
 
+  const filter = {
+    _id: wo._id,
+    status: "approved",
+  };
+
+  const update = {
+    $set: {
+      status: "in_progress",
+      startedAt: new Date(),
+    },
+  };
+
   if (!wo.assignedTo && wo.priority === "urgent") {
-    wo.assignedTo = actor._id;
+    filter.assignedTo = null;
+    update.$set.assignedTo = actor._id;
   } else {
     assertAssignedTechnician(wo, actor, "Technician chỉ được bắt đầu WO đã được phân công cho mình");
+    filter.assignedTo = actor._id;
   }
 
-  wo.status = "in_progress";
-  wo.startedAt = new Date();
-  await wo.save();
-  return wo.toObject();
+  const updated = await WorkOrder.findOneAndUpdate(filter, update, {
+    returnDocument: "after",
+  });
+
+  if (!updated) {
+    throw httpError(409, "WO đã được thay đổi bởi yêu cầu khác, vui lòng tải lại");
+  }
+
+  return updated.toObject();
 }
 
 async function completeWorkOrder(id, payload, actor) {

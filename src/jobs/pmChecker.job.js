@@ -33,7 +33,7 @@ function startPmCheckerJob(cronExpr, systemUserId = null) {
       // Keep job alive even if one tick fails.
       console.error("[pmChecker.job] loi:", error.message);
     }
-  });
+  }, { noOverlap: true });
 }
 
 module.exports = { startPmCheckerJob };

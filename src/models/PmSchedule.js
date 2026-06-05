@@ -33,6 +33,9 @@ pmScheduleSchema.index({ triggerType: 1, isActive: 1 });
 pmScheduleSchema.pre("validate", async function validateSchedule() {
   const asset = await Asset.findById(this.assetId).lean();
   if (!asset) throw httpError(404, "Không tìm thấy tài sản cho lịch PM");
+  if (asset.status === "disposed") {
+    throw httpError(400, "Tài sản đã thanh lý, không thể tạo lịch PM");
+  }
 
   const allowed = compatibleTriggers[asset.assetType] || [];
   if (!allowed.includes(this.triggerType)) {

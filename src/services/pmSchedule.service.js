@@ -130,14 +130,35 @@ async function findPmScheduleOrThrow(id) {
   return current;
 }
 
+async function validateAssetTriggerCompatibility(assetId, triggerType) {
+  const asset = await Asset.findById(assetId).select("assetType status").lean();
+  if (!asset) {
+    throw httpError(404, "Không tìm thấy tài sản cho lịch PM");
+  }
+  if (asset.status === "disposed") {
+    throw httpError(400, "Tài sản đã thanh lý, không thể tạo hoặc cập nhật lịch PM");
+  }
+
+  const allowed = {
+    machine: ["hours", "days"],
+    mold: ["shots"],
+    jig_tool: ["usage_count", "days"],
+    infrastructure: ["days"],
+  }[asset.assetType] || [];
+
+  if (!allowed.includes(triggerType)) {
+    throw httpError(
+      400,
+      `triggerType ${triggerType} không phù hợp với assetType ${asset.assetType}`
+    );
+  }
+}
+
 async function createPmSchedule(payload) {
   assertPmScheduleFields(payload);
   const parsed = buildCreatePayload(payload);
-  await ensureBaselineValueOrThrow(
-    parsed,
-    parsed.assetId,
-    parsed.triggerType
-  );
+  await validateAssetTriggerCompatibility(parsed.assetId, parsed.triggerType);
+  await ensureBaselineValueOrThrow(parsed, parsed.assetId, parsed.triggerType);
   return PmSchedule.create(parsed);
 }
 
@@ -191,11 +212,10 @@ async function updatePmSchedule(id, payload) {
     parsed.triggerType !== undefined || parsed.assetId !== undefined;
 
   if (triggerChanged && parsed.lastTriggeredValue === undefined) {
-    await ensureBaselineValueOrThrow(
-      parsed,
-      parsed.assetId || current.assetId,
-      parsed.triggerType || current.triggerType
-    );
+    const nextAssetId = parsed.assetId || current.assetId;
+    const nextTriggerType = parsed.triggerType || current.triggerType;
+    await validateAssetTriggerCompatibility(nextAssetId, nextTriggerType);
+    await ensureBaselineValueOrThrow(parsed, nextAssetId, nextTriggerType);
   }
 
   const data = await PmSchedule.findByIdAndUpdate(id, parsed, {

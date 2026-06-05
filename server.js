@@ -62,9 +62,8 @@ function buildCorsOrigin(originConfig) {
 
 async function authenticateSocket(env, socket, next) {
   try {
-    const bearerToken = socket.handshake?.auth?.token;
     const cookieToken = parseCookieHeader(socket.handshake?.headers?.cookie || "")[ACCESS_TOKEN_COOKIE];
-    const token = bearerToken || cookieToken;
+    const token = cookieToken;
     if (!token) return next(new Error("Unauthorized"));
 
     const decoded = jwt.verify(token, env.jwtSecret);
@@ -107,6 +106,7 @@ async function bootstrap() {
     name: "global",
     redisUrl: env.redisUrl,
     redisPrefix: env.redisPrefix,
+    nodeEnv: env.nodeEnv,
   }));
   app.use(requireJsonContent);
   app.use(express.json({ limit: env.jsonLimit }));
@@ -144,6 +144,7 @@ async function bootstrap() {
     name: "auth",
     redisUrl: env.redisUrl,
     redisPrefix: env.redisPrefix,
+    nodeEnv: env.nodeEnv,
   }));
   app.use("/api/auth", authRoutes);
   app.use("/api/users", userRoutes);
@@ -176,9 +177,14 @@ async function bootstrap() {
   });
 
   io.on("connection", (socket) => {
+    const roleRoom = `role:${socket.user.role}`;
+    const userRoom = `user:${socket.user._id}`;
+    socket.join(roleRoom);
+    socket.join(userRoom);
     socket.emit("realtime.connected", {
       at: new Date().toISOString(),
       userId: socket.user?._id || null,
+      role: socket.user?.role || null,
     });
   });
 

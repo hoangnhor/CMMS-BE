@@ -18,17 +18,20 @@ async function findDetailByAsset(asset, { lean = false } = {}) {
   return lean ? query.lean() : query;
 }
 
-async function createAssetDetail(asset, detail) {
+async function createAssetDetail(asset, detail, options = {}) {
   const DetailModel = getDetailModel(asset.assetType);
-  return DetailModel.create({ assetId: asset._id, ...(detail || {}) });
+  const { session } = options;
+  const docs = await DetailModel.create([{ assetId: asset._id, ...(detail || {}) }], { session });
+  return docs[0];
 }
 
-async function upsertAssetDetail(asset, detail) {
+async function upsertAssetDetail(asset, detail, options = {}) {
   const DetailModel = getDetailModel(asset.assetType);
+  const { session } = options;
   return DetailModel.findOneAndUpdate(
     { assetId: asset._id },
     { $set: detail || {} },
-    { returnDocument: "after", upsert: true }
+    { returnDocument: "after", upsert: true, session }
   ).lean();
 }
 
